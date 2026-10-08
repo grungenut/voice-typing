@@ -54,6 +54,15 @@ MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 # ------------------------------------------------------------------------------------------
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_typing.log")
+
+
+def models_dir() -> str:
+    """Speaker models: where install.ps1 puts them (local app data), else a models\\ folder here."""
+    local = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "VoiceTyping", "models")
+    beside = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+    return local if os.path.isdir(local) else beside
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -208,8 +217,7 @@ class VoiceTyping:
         if self.meeting is None or self.meeting.state == "done":
             try:
                 self.meeting = MeetingSession(
-                    self.model, self.model_lock, self.device, MEETING_DIR,
-                    os.path.join(os.path.dirname(os.path.abspath(__file__)), "models"),
+                    self.model, self.model_lock, self.device, MEETING_DIR, models_dir(),
                     self.ui, speakers=MEETING_SPEAKERS, chunk_seconds=MEETING_CHUNK_SECONDS,
                     threads=MEETING_THREADS, language=LANGUAGE)
                 self.meeting.start()

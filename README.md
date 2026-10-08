@@ -39,6 +39,12 @@ pyannote segmentation model and a 3D-Speaker embedding model.
 
 The first start after setup can take 20 seconds or so; later starts are faster.
 
+Setup puts the Python environment and the speaker models in `%LOCALAPPDATA%\VoiceTyping`
+(about 3–5 GB) and the Whisper model in `%USERPROFILE%\.cache\whisper`, so the unzipped
+folder itself stays small and can live anywhere, even on a network drive or a USB stick.
+To uninstall, delete those two folders and the unzipped folder, and run
+`Remove from Startup.cmd` if you had added it.
+
 ## Using it
 
 **Dictate:** put the cursor where you want text, hold Right Alt, speak, let go. A short beep
