@@ -1,0 +1,30 @@
+Voice Typing
+
+Hold Right Alt, talk, let go: the words are typed where your cursor is.
+Tap Right Ctrl to record a meeting; tap again to stop and get a transcript with speaker labels.
+
+Everything runs on this PC. No account, no subscription, and no audio ever leaves the computer.
+
+Good to know before you continue:
+
+* The first start downloads the speech model (about 140 MB) once. A small pill near the
+  bottom of the screen shows progress; a green "ready" pill means it is working.
+
+* Right Alt and Right Ctrl are reserved for Voice Typing while it runs. Left Alt and
+  Left Ctrl are unchanged.
+
+* A microphone icon appears in the notification area (bottom right, near the clock).
+  Click it for settings, your transcripts folder, the log, and Quit.
+
+* Recording other people: many places require you to tell participants that a meeting is
+  being recorded, and some require everyone's consent. Announce it at the start. You are
+  responsible for following the law where you and the other participants are.
+
+* Meeting recordings and transcripts are saved in Documents\Meeting Transcripts. They are
+  ordinary files; delete them whenever you like.
+
+* This program has no NVIDIA GPU support built in. On a PC with an NVIDIA card, the source
+  version on GitHub runs a larger, faster model. For most people the difference is small.
+
+Voice Typing is free, open-source software under the MIT license. It is built from
+open-source components; see "Third-party notices" in the Start menu for their licenses.

@@ -7,8 +7,7 @@ Everything runs on your own Windows PC. No account, no subscription, no API key,
 ever leaves the machine.
 
 - **Dictation** works in any program: email, Word, a browser, a chat box, a terminal.
-  Punctuation and capitalization come out right. On a PC with an NVIDIA card it is nearly
-  instant; without one there is a short pause after you let go of the key.
+  Punctuation and capitalization come out right.
 - **Meeting mode** records your microphone *and* whatever the computer is playing, so people
   on a Zoom, Teams or Meet call are included. The transcript opens when you stop, with
   `[00:12:40] Speaker 2: …` lines, and the audio file is kept next to it.
@@ -17,33 +16,35 @@ Speech recognition is OpenAI's open-source [Whisper](https://github.com/openai/w
 model. Speaker labeling uses [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with the
 pyannote segmentation model and a 3D-Speaker embedding model.
 
-## Requirements
+## Install (the easy way)
 
-- Windows 10 or 11, 64-bit, and a microphone.
-- About 4 GB of free disk space (most of it is PyTorch and the speech model).
-- An NVIDIA graphics card is **optional**. With one, the large, most accurate model is used
-  and dictation is instant. Without one, a smaller English-only model runs on the CPU.
-- Internet access during setup only.
+1. Download **`VoiceTyping-Setup-<version>.exe`** from the
+   [Releases](../../releases) page (about 180 MB).
+2. Run it. Windows may show a blue "Windows protected your PC" box because the installer is
+   not signed with a paid certificate; click **More info → Run anyway**. No admin password
+   is needed; it installs for your user only.
+3. Tick "Start Voice Typing when I sign in" if you want it always on. Finish.
+4. The first start downloads the speech model (about 140 MB) once. A small gray pill near
+   the bottom of the screen shows progress; a green "ready" pill means it is working.
 
-## Install
+A microphone icon appears in the notification area (bottom right, by the clock). Click it
+for **settings**, your **transcripts folder**, the **log**, and **Quit**. Uninstall from
+Windows Settings → Apps like any other program.
 
-1. Click the green **Code** button on GitHub → **Download ZIP**, and unzip it somewhere
-   permanent (for example `C:\Users\<you>\Voice Typing`). Or `git clone` it.
-2. Double-click **`Install.cmd`**. It installs Python if you don't have it (no admin
-   needed), downloads the libraries and models, and takes a few minutes. Run it again any
-   time; it only redoes what is missing.
-3. Double-click **`Start Voice Typing.cmd`**. A small gray "Loading speech model…" pill
-   appears near the bottom of the screen, then a green "ready" pill. That's it.
-4. Optional: double-click **`Add to Startup.cmd`** so it starts every time you sign in.
-   `Remove from Startup.cmd` undoes that. `Stop Voice Typing.cmd` stops it.
+Requirements: Windows 10 or 11 (64-bit), a microphone, about 1 GB of disk space.
 
-The first start after setup can take 20 seconds or so; later starts are faster.
+## Install from source (for NVIDIA graphics cards)
 
-Setup puts the Python environment and the speaker models in `%LOCALAPPDATA%\VoiceTyping`
-(about 3–5 GB) and the Whisper model in `%USERPROFILE%\.cache\whisper`, so the unzipped
-folder itself stays small and can live anywhere, even on a network drive or a USB stick.
-To uninstall, delete those two folders and the unzipped folder, and run
-`Remove from Startup.cmd` if you had added it.
+The installer above runs on the CPU with a compact English model, which is accurate and fast
+enough for most people. If your PC has an NVIDIA card, the source version uses the large
+`turbo` model on the GPU instead: more accurate, any language, and nearly instant.
+
+1. Click the green **Code** button → **Download ZIP** and unzip it somewhere permanent, or
+   `git clone` it.
+2. Double-click **`Install.cmd`**. It installs Python if needed, the GPU or CPU build of
+   PyTorch, the libraries and the models (about 5 GB with an NVIDIA card). Rerun it any time.
+3. Double-click **`Start Voice Typing.cmd`**. `Add to Startup.cmd` makes it start at sign-in;
+   `Remove from Startup.cmd` undoes that; `Stop Voice Typing.cmd` stops it.
 
 ## Using it
 
@@ -53,30 +54,39 @@ text is pasted a moment later. Taps shorter than a third of a second are ignored
 
 **Record a meeting:** tap Right Ctrl (rising two-tone beep; purple "Recording 00:00" pill with
 a running clock). Tap it again to stop (falling beep). The transcript is written to
-`Documents\Meeting Transcripts\` and opens in Notepad when it is ready. Labeling speakers
-takes about two to three minutes per hour of audio. While recording, a `.live.txt` file in the
-same folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-meeting.
+`Documents\Meeting Transcripts\` and opens in Notepad when ready. Labeling speakers takes
+about two to three minutes per hour of audio. While recording, a `.live.txt` file in the same
+folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-meeting.
 
 Right Alt and Right Ctrl are reserved for Voice Typing while it runs (programs never see
 them). Left Alt and Left Ctrl work as usual.
 
 ## Settings
 
-Open `voice_typing.py` in Notepad; the `SETTINGS` block at the top is plain English:
+Tray icon → **Open settings** opens `settings.ini` in Notepad (it lives in
+`%LOCALAPPDATA%\VoiceTyping`). Every line is explained in the file. Quit and start Voice
+Typing again after saving.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `HOTKEY` | `right alt` | The hold-to-talk key |
-| `MEETING_HOTKEY` | `right ctrl` | The tap-to-record key |
-| `LANGUAGE` | `en` | Language spoken (`None` = detect, needs the GPU model) |
-| `GPU_MODEL` / `CPU_MODEL` | `turbo` / `base.en` | Whisper model used with / without an NVIDIA card |
-| `BEEPS`, `SHOW_OVERLAY` | `True` | The beeps and the on-screen pill |
-| `TRAILING_SPACE` | `True` | Add a space after dictated text |
-| `MEETING_DIR` | `Documents\Meeting Transcripts` | Where meeting files go |
-| `MEETING_SPEAKERS` | `0` | `0` = detect the number of speakers; or force it (`2`, `3`, …) |
-| `MEETING_THREADS` | `8` | CPU threads for speaker labeling |
+| `hotkey` | `right alt` | The hold-to-talk key |
+| `meeting_hotkey` | `right ctrl` | The tap-to-record key |
+| `language` | `en` | Language spoken, or `auto` (needs the GPU model) |
+| `gpu_model` / `cpu_model` | `turbo` / `base.en` | Whisper model with / without an NVIDIA card |
+| `beeps`, `show_overlay` | `yes` | The beeps and the on-screen pill |
+| `trailing_space` | `yes` | Add a space after dictated text |
+| `meeting_dir` | `Documents\Meeting Transcripts` | Where meeting files go |
+| `meeting_speakers` | `0` | `0` = detect the number of speakers, or force it (`2`, `3`, …) |
+| `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
+| `meeting_threads` | `8` | CPU threads for speaker labeling |
 
-Restart Voice Typing after changing a setting.
+## Recording other people
+
+Meeting mode records everyone in the room and everyone on the call. In many places the law
+requires you to tell participants a conversation is being recorded, and some places (for
+example several US states, and much of Europe) require everyone's consent. Say it at the
+start of the meeting. You are responsible for following the law where you and the other
+participants are. Voice Typing does not announce itself to the other side of a call.
 
 ## Good to know
 
@@ -89,15 +99,25 @@ Restart Voice Typing after changing a setting.
 - Programs running as administrator don't accept the paste unless Voice Typing also runs as
   administrator.
 - Whisper does not take spoken commands such as "new line" or "period".
-- Problems? Look at `voice_typing.log` next to the script.
+- Problems? Tray icon → **View log**.
 
 ## Privacy
 
 Audio is processed by models running on your PC and is never uploaded. Meeting recordings
 and transcripts are ordinary files in your Documents folder; delete them whenever you like.
-Setup downloads the models from GitHub and PyPI once.
+Setup downloads the speech model from OpenAI's public servers once; the source install also
+downloads libraries from PyPI and the speaker models from GitHub.
+
+## Building the installer yourself
+
+`powershell -ExecutionPolicy Bypass -File build\build_exe.ps1` makes `dist\VoiceTyping-Setup-<version>.exe`.
+It needs Python 3.10+ and [Inno Setup 6](https://jrsoftware.org/isdl.php). The script creates a
+CPU-only build environment, regenerates `THIRD-PARTY-NOTICES.md`, runs PyInstaller, then Inno Setup.
 
 ## License
 
-MIT (see `LICENSE`). Whisper is MIT; sherpa-onnx is Apache 2.0; the pyannote segmentation
-model is MIT; the 3D-Speaker embedding model is Apache 2.0.
+Voice Typing is MIT-licensed (see `LICENSE`). It is built from open-source components; their
+licenses are listed with full text in `THIRD-PARTY-NOTICES.md`, which is also installed with
+the program (Start menu → Third-party notices). Whisper is MIT; sherpa-onnx and the
+3D-Speaker model are Apache 2.0; the pyannote segmentation model is MIT; PyTorch is BSD-style.
+Nothing in the program is under a copyleft license.

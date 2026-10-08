@@ -2,3 +2,6 @@
 models/
 __pycache__/
 *.log
+build/models/
+build/work/
+dist/

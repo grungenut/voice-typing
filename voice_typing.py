@@ -26,12 +26,20 @@ import time
 import tkinter as tk
 import winsound
 
+# As a windowed exe (or under pythonw) there is no console: stdout/stderr are None, and
+# libraries that print progress bars (Whisper's model download uses tqdm) crash on them.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 import keyboard
 import numpy as np
 import pyperclip
 import sounddevice as sd
 
 from meeting import MeetingSession
+from tray import Tray
 
 # ----------------------------------------------------------------------------- SETTINGS --
 HOTKEY = "right alt"       # hold to talk
@@ -53,14 +61,107 @@ MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 # ------------------------------------------------------------------------------------------
 
-LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice_typing.log")
+__version__ = "1.0.0"
+
+# Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
+# program folder may not be writable, so everything the app writes goes to local app data.
+FROZEN = getattr(sys, "frozen", False)
+APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
+BUNDLE_DIR = getattr(sys, "_MEIPASS", APP_DIR)        # bundled read-only files (models, icon)
+DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "VoiceTyping")
+os.makedirs(DATA_DIR, exist_ok=True)
+SETTINGS_PATH = os.path.join(DATA_DIR, "settings.ini")
+LOG_PATH = os.path.join(DATA_DIR if FROZEN else APP_DIR, "voice_typing.log")
+
+SETTINGS_TEMPLATE = """; Voice Typing settings. Lines starting with ; are comments.
+; Restart Voice Typing after editing (tray icon > Quit, then start it again).
+
+[voice typing]
+; The hold-to-talk key for dictation, and the tap-to-record key for meetings.
+hotkey = right alt
+meeting_hotkey = right ctrl
+
+; Language spoken: en, es, fr, de, ... or auto. (auto needs an NVIDIA card; the CPU model is English-only.)
+language = en
+
+; Speech model with an NVIDIA card / without one. Bigger = more accurate but slower.
+;   with a card:  turbo (best), small.en, base.en
+;   without one:  base.en (default), small.en (better, slower), tiny.en (fastest)
+gpu_model = turbo
+cpu_model = base.en
+
+; Beeps and the little on-screen pill: yes or no.
+beeps = yes
+show_overlay = yes
+
+; Add a space after dictated text so the next dictation does not run into it.
+trailing_space = yes
+
+; Where meeting recordings and transcripts go.
+meeting_dir = %USERPROFILE%\\Documents\\Meeting Transcripts
+
+; Speakers in a meeting: 0 = work it out automatically, or a number to force it (2, 3, ...).
+meeting_speakers = 0
+
+; How often (seconds) the live transcript file is updated during a meeting.
+meeting_chunk_seconds = 30
+
+; CPU threads used for speaker labeling at the end of a meeting.
+meeting_threads = 8
+"""
+
+
+def load_settings():
+    """Read settings.ini (creating it with defaults the first time) over the constants above."""
+    import configparser
+
+    if not os.path.exists(SETTINGS_PATH):
+        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+            f.write(SETTINGS_TEMPLATE)
+    cp = configparser.ConfigParser(interpolation=None)
+    try:
+        cp.read(SETTINGS_PATH, encoding="utf-8")
+    except Exception:
+        log.exception("settings.ini could not be read - using defaults")
+        return
+    if not cp.has_section("voice typing"):
+        return
+    g = globals()
+    for key, raw in cp.items("voice typing"):
+        name = key.upper()
+        if name not in g:
+            log.warning("settings.ini: unknown setting %r ignored", key)
+            continue
+        default, raw = g[name], raw.strip()
+        try:
+            if name == "LANGUAGE":
+                value = None if raw.lower() in ("", "auto", "none") else raw
+            elif isinstance(default, bool):
+                value = raw.lower() in ("1", "yes", "true", "on")
+            elif isinstance(default, int):
+                value = int(raw)
+            else:
+                value = os.path.expandvars(raw)
+        except ValueError:
+            log.warning("settings.ini: bad value for %s (%r) - using default %r", key, raw, default)
+            continue
+        g[name] = value
 
 
 def models_dir() -> str:
-    """Speaker models: where install.ps1 puts them (local app data), else a models\\ folder here."""
-    local = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "VoiceTyping", "models")
-    beside = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-    return local if os.path.isdir(local) else beside
+    """Speaker models: bundled in the exe, else where install.ps1 put them, else beside the script."""
+    for d in (os.path.join(BUNDLE_DIR, "models"), os.path.join(DATA_DIR, "models"), os.path.join(APP_DIR, "models")):
+        if os.path.isdir(d):
+            return d
+    return os.path.join(APP_DIR, "models")
+
+
+def icon_path():
+    for d in (BUNDLE_DIR, APP_DIR):
+        p = os.path.join(d, "assets", "voice_typing.ico")
+        if os.path.exists(p):
+            return p
+    return None
 
 
 logging.basicConfig(
@@ -157,6 +258,9 @@ class VoiceTyping:
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         name = GPU_MODEL if self.device == "cuda" else CPU_MODEL
+        cache = os.path.join(os.getenv("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "whisper", name + ".pt")
+        if not os.path.exists(cache):
+            self.ui.put((f"Downloading the speech model ({name}) - one time only...", "#7f8c8d", None))
         log.info("loading Whisper model %r on %s ...", name, self.device)
         t0 = time.time()
         self.model = whisper.load_model(name, device=self.device)
@@ -277,15 +381,54 @@ class VoiceTyping:
 
     # ---- main --------------------------------------------------------------------------
     def run(self):
+        load_settings()
+        log.info("Voice Typing %s starting (%s); settings: %s", __version__, "exe" if FROZEN else "script", SETTINGS_PATH)
         root = tk.Tk()
         root.withdraw()
         overlay = Overlay(root) if SHOW_OVERLAY else None
+        quitting = {"on": False}
+
+        def open_transcripts():
+            os.makedirs(MEETING_DIR, exist_ok=True)
+            os.startfile(MEETING_DIR)
+
+        tray = Tray(f"Voice Typing {__version__} - hold {HOTKEY} to dictate, tap {MEETING_HOTKEY} for a meeting",
+                    icon_path(), [
+                        ("Open settings", lambda: os.startfile(SETTINGS_PATH)),
+                        ("Open transcripts folder", open_transcripts),
+                        ("View log", lambda: os.startfile(LOG_PATH)),
+                        None,
+                        ("Quit Voice Typing", lambda: self.ui.put("quit")),
+                    ])
+        tray.start()
+
+        def shutdown():
+            # A meeting in progress is stopped and allowed to finish writing its transcript first.
+            if self.meeting is not None and self.meeting.state == "recording":
+                self.meeting.stop()
+            if self.meeting is not None and self.meeting.state == "finalizing":
+                root.after(250, shutdown)
+                return
+            log.info("quit")
+            try:
+                keyboard.unhook_all()
+            except Exception:
+                pass
+            tray.stop()
+            root.quit()
 
         def pump():
             try:
                 while True:
                     msg = self.ui.get_nowait()
-                    if overlay is None:
+                    if msg == "quit":
+                        if not quitting["on"]:
+                            quitting["on"] = True
+                            if overlay:
+                                overlay.show("Closing Voice Typing...", "#7f8c8d", None)
+                            shutdown()
+                        continue
+                    if overlay is None or quitting["on"]:
                         continue
                     if msg is None:
                         overlay.hide()
@@ -309,7 +452,8 @@ class VoiceTyping:
             keyboard.on_press_key(MEETING_HOTKEY, self.on_meeting_press, suppress=True)
             keyboard.on_release_key(MEETING_HOTKEY, self.on_meeting_release, suppress=True)
             log.info("ready - hold %s to talk, tap %s for a meeting", HOTKEY, MEETING_HOTKEY)
-            self.ui.put(("Voice Typing ready - hold Right Alt to talk, tap Right Ctrl for a meeting", "#27ae60", 3000))
+            self.ui.put((f"Voice Typing ready - hold {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
+                         "#27ae60", 3000))
 
         threading.Thread(target=startup, daemon=True).start()
         root.after(40, pump)
