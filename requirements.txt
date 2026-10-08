@@ -1,0 +1,8 @@
+# PyTorch is installed separately by install.ps1 (GPU or CPU build, depending on the PC).
+openai-whisper
+numpy
+sounddevice
+soundcard
+keyboard
+pyperclip
+sherpa-onnx
