@@ -72,7 +72,7 @@ MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cur
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -359,6 +359,7 @@ class VoiceTyping:
         self.files = []                     # files to transcribe when started from the command line
         self.restart_requested = False      # settings saved: start a fresh copy after quitting
         self.file_queue = queue.Queue()     # files picked from the tray menu
+        self.key_events = queue.Queue()     # hotkey events, handled off the hook thread (see key_hook)
 
     # ---- model -------------------------------------------------------------------------
     def load_model(self):
@@ -398,23 +399,41 @@ class VoiceTyping:
         return sysglue.key_name_variants(setting)
 
     def key_hook(self, event):
-        """Runs for every key event. Returns False to swallow the event (only our two keys)."""
-        name = event.name
-        if name in self.hotkey_names:
-            if DICTATION_MODE.lower() == "toggle":
-                if event.down:
-                    if not self.hotkey_down:            # first down event of this tap, not a repeat
-                        (self.on_release if self.recording else self.on_press)(event)
-                    self.hotkey_down = True
-                else:
-                    self.hotkey_down = False
-            else:
-                (self.on_press if event.down else self.on_release)(event)
-            return False
-        if name in self.meeting_hotkey_names:
-            (self.on_meeting_press if event.down else self.on_meeting_release)(event)
-            return False
+        """Runs inside the OS keyboard hook for every key event. Returns False to swallow the
+        event (only our two keys). It must return within a fraction of a second: Windows drops
+        a hook that is slow and passes the key on to the app, which then sees the Alt go down
+        but never come up (keyboard "stuck", Ctrl+V turns into Alt+Ctrl+V). So nothing slow
+        happens here - the event is handed to key_worker and dealt with there."""
+        try:
+            if event.name in self.hotkey_names:
+                self.key_events.put(("dictation", event))
+                return False
+            if event.name in self.meeting_hotkey_names:
+                self.key_events.put(("meeting", event))
+                return False
+        except Exception:
+            log.exception("key hook failed")
         return True
+
+    def key_worker(self):
+        """Handles hotkey events one after another, in the order they arrived."""
+        while True:
+            kind, event = self.key_events.get()
+            try:
+                if kind == "dictation":
+                    if DICTATION_MODE.lower() == "toggle":
+                        if event.down:
+                            if not self.hotkey_down:            # first down event of this tap, not a repeat
+                                (self.on_release if self.recording else self.on_press)(event)
+                            self.hotkey_down = True
+                        else:
+                            self.hotkey_down = False
+                    else:
+                        (self.on_press if event.down else self.on_release)(event)
+                else:
+                    (self.on_meeting_press if event.down else self.on_meeting_release)(event)
+            except Exception:
+                log.exception("hotkey handling failed")
 
     def on_press(self, event):
         if self.recording:              # Windows auto-repeats a held key; ignore repeats
@@ -423,6 +442,9 @@ class VoiceTyping:
         self.pressed_at = time.time()
         try:
             self.recorder.start()
+            opened = time.time() - self.pressed_at
+            if opened > 0.3:
+                log.info("microphone took %.2fs to open", opened)
         except Exception as e:
             self.recording = False
             log.error("could not open microphone: %s", e)
@@ -679,6 +701,7 @@ class VoiceTyping:
                 return
             threading.Thread(target=self.worker, daemon=True).start()
             threading.Thread(target=self.file_worker, daemon=True).start()
+            threading.Thread(target=self.key_worker, daemon=True).start()
             # One global hook, matched by key *name*. (On Windows, keyboard.on_press_key() matches
             # by scan code, and Left and Right Alt share one, so it fired - and swallowed - both.)
             # On macOS the hook needs the Accessibility permission; ask, then keep trying.
