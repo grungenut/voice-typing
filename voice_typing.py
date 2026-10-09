@@ -51,7 +51,8 @@ DICTATION_MODE = "hold"    # hold = hold the key while talking; toggle = tap to 
 LANGUAGE = "en"            # None = auto-detect (slower, and the .en models can't)
 GPU_MODEL = "turbo"        # used when a CUDA GPU is found: large-v3-turbo, best accuracy, ~1.6 GB download
 CPU_MODEL = "base.en"      # used when there is no GPU: small and quick enough on a CPU
-MIN_SECONDS = 0.35         # taps shorter than this are ignored
+MIN_SECONDS = 0.35
+SILENCE_RMS = 0.0004       # below this the recording is treated as silence and not transcribed         # taps shorter than this are ignored
 BEEPS = True               # short tone on start and on stop
 SHOW_OVERLAY = True        # little "Listening..." pill at the bottom of the screen
 TRAILING_SPACE = True      # add a space after the text so the next dictation doesn't run into it
@@ -72,7 +73,7 @@ MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cur
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -567,18 +568,26 @@ class VoiceTyping:
             audio = self.jobs.get()
             try:
                 rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) else 0.0
-                if rms < 0.003:
-                    log.info("skipped: %.1fs of near-silence (rms %.4f)", len(audio) / SAMPLE_RATE, rms)
-                    self.ui.put(None)
+                # Only real silence is dropped. Quiet laptop microphones put speech at an rms of
+                # 0.001-0.003 (James's PC, 2026-10-09), so the gate sits well below that and
+                # Whisper's own no_speech filter handles the rest.
+                if rms < SILENCE_RMS:
+                    log.info("skipped: %.1fs of near-silence (rms %.4f) - microphone muted, too quiet, or not the default device?",
+                             len(audio) / SAMPLE_RATE, rms)
+                    self.ui.put(("Heard nothing - is the microphone on and the default device?", "#7f8c8d", 3000))
                     continue
+                peak = float(np.max(np.abs(audio)))
+                if 0 < peak < 0.3:                        # quiet recording: bring it up to a normal level
+                    audio = audio * min(0.9 / peak, 40.0)
                 t0 = time.time()
                 text = self.transcribe(audio)
-                log.info("%.1fs audio -> %.2fs transcribe: %r", len(audio) / SAMPLE_RATE, time.time() - t0, text)
+                log.info("%.1fs audio (level %.3f) -> %.2fs transcribe: %r",
+                         len(audio) / SAMPLE_RATE, rms, time.time() - t0, text)
                 if text:
                     self.type_text(text + (" " if TRAILING_SPACE else ""))
                     self.ui.put(("✓", "#27ae60", 500))
                 else:
-                    self.ui.put(None)
+                    self.ui.put(("No words recognized", "#7f8c8d", 2000))
             except Exception:
                 log.exception("transcription failed")
                 self.ui.put(("Error - see log", "#7f8c8d", 2500))
