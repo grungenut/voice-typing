@@ -20,6 +20,8 @@ log = logging.getLogger("voice_typing.tray")
 user32, shell32, kernel32 = ctypes.windll.user32, ctypes.windll.shell32, ctypes.windll.kernel32
 
 WM_USER, WM_COMMAND, WM_CLOSE, WM_DESTROY, WM_NULL = 0x0400, 0x0111, 0x0010, 0x0002, 0x0000
+WM_TIMER = 0x0113
+RETRY_TIMER_ID = 7
 WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU = 0x0202, 0x0205, 0x007B
 WM_TRAY = WM_USER + 1
 NIM_ADD, NIM_DELETE = 0x0, 0x2
@@ -42,6 +44,11 @@ user32.LoadImageW.restype = w.HANDLE
 user32.LoadImageW.argtypes = [w.HINSTANCE, w.LPCWSTR, w.UINT, ctypes.c_int, ctypes.c_int, w.UINT]
 user32.TrackPopupMenu.argtypes = [w.HMENU, w.UINT, ctypes.c_int, ctypes.c_int, ctypes.c_int, w.HWND, w.LPVOID]
 user32.AppendMenuW.argtypes = [w.HMENU, w.UINT, ctypes.c_size_t, w.LPCWSTR]
+user32.RegisterWindowMessageW.argtypes = [w.LPCWSTR]
+user32.RegisterWindowMessageW.restype = w.UINT
+user32.SetTimer.argtypes = [w.HWND, ctypes.c_size_t, w.UINT, w.LPVOID]
+user32.SetTimer.restype = ctypes.c_size_t
+user32.KillTimer.argtypes = [w.HWND, ctypes.c_size_t]
 
 
 class WNDCLASSW(ctypes.Structure):
@@ -65,6 +72,8 @@ class Tray:
         self.hwnd = None
         self._thread = None
         self._ready = threading.Event()
+        self._taskbar_created = None               # set in _run; messages can arrive before that
+        self._added, self._attempts = False, 0
         self._wndproc = WNDPROC(self._on_message)   # keep a reference or it gets collected
 
     # ---- public ----------------------------------------------------------------------
@@ -106,13 +115,30 @@ class Tray:
         self._nid.uCallbackMessage = WM_TRAY
         self._nid.hIcon = self._icon
         self._nid.szTip = self.tooltip
-        if not shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self._nid)):
-            log.error("tray: Shell_NotifyIcon failed")
+        # Explorer broadcasts this when the taskbar (re)starts; icons added before that are lost.
+        self._taskbar_created = user32.RegisterWindowMessageW("TaskbarCreated")
+        self._added = False
+        self._attempts = 0
+        self._add_icon()
         self._ready.set()
         msg = w.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
+
+    def _add_icon(self):
+        """Add the icon; if the taskbar is not there yet (typical when started at sign-in),
+        keep retrying on a timer: every 2 s for two minutes, then every 15 s."""
+        self._attempts += 1
+        if shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(self._nid)):
+            self._added = True
+            user32.KillTimer(self.hwnd, RETRY_TIMER_ID)
+            if self._attempts > 1:
+                log.info("tray icon added after %d attempts", self._attempts)
+            return
+        if self._attempts == 1:
+            log.warning("tray: Shell_NotifyIcon failed (taskbar not ready?) - will keep trying")
+        user32.SetTimer(self.hwnd, RETRY_TIMER_ID, 2000 if self._attempts < 60 else 15000, None)
 
     def _show_menu(self):
         menu = user32.CreatePopupMenu()
@@ -138,7 +164,20 @@ class Tray:
         if msg == WM_TRAY and (lparam & 0xFFFF) in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
             self._show_menu()
             return 0
+        if msg == WM_TIMER and wparam == RETRY_TIMER_ID:
+            if not self._added:
+                self._add_icon()
+            else:
+                user32.KillTimer(hwnd, RETRY_TIMER_ID)
+            return 0
+        if msg == self._taskbar_created:
+            log.info("tray: taskbar restarted - re-adding the icon")
+            shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._nid))
+            self._added, self._attempts = False, 0
+            self._add_icon()
+            return 0
         if msg == WM_CLOSE:
+            user32.KillTimer(hwnd, RETRY_TIMER_ID)
             shell32.Shell_NotifyIconW(NIM_DELETE, ctypes.byref(self._nid))
             user32.DestroyWindow(hwnd)
             return 0

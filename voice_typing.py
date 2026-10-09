@@ -71,7 +71,7 @@ MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cur
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.

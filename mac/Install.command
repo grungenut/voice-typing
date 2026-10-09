@@ -114,8 +114,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleName</key>              <string>Voice Typing</string>
     <key>CFBundleDisplayName</key>       <string>Voice Typing</string>
     <key>CFBundleIdentifier</key>        <string>com.jamesbeadle.voicetyping</string>
-    <key>CFBundleVersion</key>           <string>1.1.0</string>
-    <key>CFBundleShortVersionString</key><string>1.1.0</string>
+    <key>CFBundleVersion</key>           <string>1.1.1</string>
+    <key>CFBundleShortVersionString</key><string>1.1.1</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleExecutable</key>        <string>Voice Typing</string>
     <key>CFBundleIconFile</key>          <string>voice_typing</string>
