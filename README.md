@@ -80,7 +80,9 @@ Typing again after saving. New versions add their new settings to your file auto
 | `gpu_model` / `cpu_model` | `turbo` / `base.en` | Whisper model with / without an NVIDIA card |
 | `beeps`, `show_overlay` | `yes` | The beeps and the on-screen pill |
 | `trailing_space` | `yes` | Add a space after dictated text |
-| `meeting_dir` | `Documents\Meeting Transcripts` | Where meeting files go |
+| `meeting_dir` | `Documents\Meeting Transcripts` | Where meeting transcripts (and audio) go. Any folder, even a network share |
+| `meeting_audio_dir` | blank | Put the WAV files in a different folder; blank keeps them beside the transcripts |
+| `meeting_subfolders` | `no` | `yes` = each meeting gets its own folder holding its transcript and audio |
 | `meeting_speakers` | `0` | `0` = detect the number of speakers, or force it (`2`, `3`, …) |
 | `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
 | `meeting_threads` | `8` | CPU threads for speaker labeling |

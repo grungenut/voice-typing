@@ -56,6 +56,8 @@ SAMPLE_RATE = 16000        # Whisper's native rate; do not change
 # (with speaker labels) and the audio land in MEETING_DIR and the transcript opens when done.
 MEETING_HOTKEY = "right ctrl"
 MEETING_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Meeting Transcripts")
+MEETING_AUDIO_DIR = ""     # where the WAV files go; "" = next to the transcripts
+MEETING_SUBFOLDERS = False # True = each meeting gets its own folder holding its transcript and audio
 MEETING_SPEAKERS = 0       # 0 = work out how many speakers; or force a number (2, 3, ...)
 MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while recording
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
@@ -115,8 +117,14 @@ show_overlay = yes
 ; Add a space after dictated text so the next dictation does not run into it.
 trailing_space = yes
 
-; Where meeting recordings and transcripts go.
+; Where meeting transcripts (and, unless changed below, the audio) go. Any folder you like.
 meeting_dir = %USERPROFILE%\\Documents\\Meeting Transcripts
+
+; Put the audio (WAV) files in a different folder. Leave blank to keep them next to the transcripts.
+meeting_audio_dir =
+
+; yes = each meeting gets its own folder (named after the meeting) holding its transcript and audio.
+meeting_subfolders = no
 
 ; Speakers in a meeting: 0 = work it out automatically, or a number to force it (2, 3, ...).
 meeting_speakers = 0
@@ -427,7 +435,8 @@ class VoiceTyping:
                 self.meeting = MeetingSession(
                     self.model, self.model_lock, self.device, MEETING_DIR, models_dir(),
                     self.ui, speakers=MEETING_SPEAKERS, chunk_seconds=MEETING_CHUNK_SECONDS,
-                    threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower())
+                    threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower(),
+                    audio_dir=MEETING_AUDIO_DIR.strip() or None, subfolders=MEETING_SUBFOLDERS)
                 self.meeting.start()
             except Exception:
                 log.exception("could not start meeting recording")

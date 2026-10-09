@@ -57,7 +57,8 @@ def _ms(seconds: float) -> str:
 
 class MeetingSession:
     def __init__(self, model, model_lock, device, out_dir, models_dir, ui, speakers=0,
-                 chunk_seconds=30, threads=8, language="en", open_mode="transcript"):
+                 chunk_seconds=30, threads=8, language="en", open_mode="transcript",
+                 audio_dir=None, subfolders=False):
         self.model, self.model_lock, self.device = model, model_lock, device
         self.open_mode = open_mode           # transcript | folder | both | no
         self.out_dir, self.models_dir, self.ui = out_dir, models_dir, ui
@@ -65,9 +66,18 @@ class MeetingSession:
 
         self.started = datetime.datetime.now()
         stamp = self.started.strftime("%Y-%m-%d %H-%M")
-        os.makedirs(out_dir, exist_ok=True)
-        self.base = os.path.join(out_dir, f"Meeting {stamp}")
-        self.wav_path, self.live_path, self.final_path = self.base + ".wav", self.base + ".live.txt", self.base + ".txt"
+        name = f"Meeting {stamp}"
+        # Transcript folder, audio folder (same unless audio_dir is set), optional folder per meeting.
+        txt_dir = os.path.join(out_dir, name) if subfolders else out_dir
+        if audio_dir:
+            wav_dir = os.path.join(audio_dir, name) if subfolders else audio_dir
+        else:
+            wav_dir = txt_dir
+        os.makedirs(txt_dir, exist_ok=True)
+        os.makedirs(wav_dir, exist_ok=True)
+        self.wav_path = os.path.join(wav_dir, name + ".wav")
+        self.live_path = os.path.join(txt_dir, name + ".live.txt")
+        self.final_path = os.path.join(txt_dir, name + ".txt")
 
         self._stop = threading.Event()
         self._mic_q, self._lb_q = queue.Queue(), queue.Queue()
@@ -326,7 +336,8 @@ class MeetingSession:
             f.write(f"Meeting transcript - {self.started:%A, %B %d, %Y, %I:%M %p}\n")
             f.write(f"Length {_hms(length)} - {n_spk} speaker{'s' if n_spk != 1 else ''} detected"
                     + (" (labels unavailable)" if not turns else "") + "\n")
-            f.write(f"Audio: {os.path.basename(self.wav_path)}\n\n")
+            same_folder = os.path.dirname(self.wav_path) == os.path.dirname(self.final_path)
+            f.write(f"Audio: {os.path.basename(self.wav_path) if same_folder else self.wav_path}\n\n")
             for ln in lines:
                 who = f"Speaker {order[ln['spk']]}" if ln["spk"] in order else "Unknown"
                 f.write(f"[{_hms(ln['start'])}] {who}: {''.join(ln['text']).strip()}\n\n")
