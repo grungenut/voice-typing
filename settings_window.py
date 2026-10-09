@@ -23,6 +23,10 @@ SCHEMA = [
      "Hold this key, speak, let go: the words are pasted where the cursor is.\n\n"
      "The key stops working for everything else while Voice Typing runs. Pick one from the "
      "list or type a name.\n\nOptions: " + ", ".join(KEY_NAMES)),
+    ("Dictation", "dictation_mode", "Dictation key works as", "choice", ["hold", "toggle"],
+     "hold = hold the key down while you talk; let go and the words are typed (default).\n\n"
+     "toggle = tap the key once to start listening, talk as long as you like, tap again to stop "
+     "and type. The red pill stays up while it listens."),
     ("Dictation", "language", "Language", "choice", LANGUAGES,
      "The language you speak.\n\nen = English (default). auto = detect it each time, which is "
      "slower and needs the NVIDIA model; the CPU model is English-only.\n\nOther codes: es Spanish, "

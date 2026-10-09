@@ -47,6 +47,7 @@ if sysglue.IS_WIN:
 
 # ----------------------------------------------------------------------------- SETTINGS --
 HOTKEY = sysglue.DEFAULT_HOTKEY            # hold to talk (right alt; right option on a Mac)
+DICTATION_MODE = "hold"    # hold = hold the key while talking; toggle = tap to start, tap again to stop
 LANGUAGE = "en"            # None = auto-detect (slower, and the .en models can't)
 GPU_MODEL = "turbo"        # used when a CUDA GPU is found: large-v3-turbo, best accuracy, ~1.6 GB download
 CPU_MODEL = "base.en"      # used when there is no GPU: small and quick enough on a CPU
@@ -71,7 +72,7 @@ MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cur
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -91,6 +92,10 @@ SETTINGS_TEMPLATE = """; Voice Typing settings. Lines starting with ; are commen
 ; Whatever key you pick stops working for everything else while Voice Typing runs.
 hotkey = @HOTKEY@
 meeting_hotkey = @MEETING_HOTKEY@
+
+; How the dictation key works: hold = hold it down while you talk and let go to type;
+; toggle = tap once to start listening, tap again to stop and type.
+dictation_mode = hold
 
 ; Hold the meeting key this many seconds to start (and to stop) a recording, so a stray tap
 ; does nothing. A countdown shows while you hold. 0 = a quick tap starts and stops.
@@ -348,6 +353,7 @@ class VoiceTyping:
         self.device = "cpu"
         self.meeting = None                 # the running MeetingSession, if any
         self.meeting_key_down = False
+        self.hotkey_down = False            # dictation key physically down (toggle mode ignores auto-repeat)
         self.hotkey_names = self.meeting_hotkey_names = set()   # set in run() after settings load
         self.meeting_press_id = 0           # bumps on each meeting-key press (hold mode)
         self.files = []                     # files to transcribe when started from the command line
@@ -395,7 +401,15 @@ class VoiceTyping:
         """Runs for every key event. Returns False to swallow the event (only our two keys)."""
         name = event.name
         if name in self.hotkey_names:
-            (self.on_press if event.down else self.on_release)(event)
+            if DICTATION_MODE.lower() == "toggle":
+                if event.down:
+                    if not self.hotkey_down:            # first down event of this tap, not a repeat
+                        (self.on_release if self.recording else self.on_press)(event)
+                    self.hotkey_down = True
+                else:
+                    self.hotkey_down = False
+            else:
+                (self.on_press if event.down else self.on_release)(event)
             return False
         if name in self.meeting_hotkey_names:
             (self.on_meeting_press if event.down else self.on_meeting_release)(event)
@@ -416,7 +430,8 @@ class VoiceTyping:
             return
         if BEEPS:
             threading.Thread(target=sysglue.beep, args=(880, 70), daemon=True).start()
-        self.ui.put(("●  Listening...", "#c0392b", None))
+        self.ui.put(("●  Listening..." + ("  (tap again to stop)" if DICTATION_MODE.lower() == "toggle" else ""),
+                     "#c0392b", None))
 
     def on_release(self, event):
         if not self.recording:
@@ -674,8 +689,9 @@ class VoiceTyping:
                     self.ui.put(("Allow Voice Typing (or Python) under System Settings > Privacy & Security > "
                                  "Accessibility, then wait a moment", "#7f8c8d", None))
                     time.sleep(3)
-            log.info("ready - hold %s to talk, tap %s for a meeting", HOTKEY, MEETING_HOTKEY)
-            self.ui.put((f"Voice Typing ready - hold {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
+            verb = "tap" if DICTATION_MODE.lower() == "toggle" else "hold"
+            log.info("ready - %s %s to talk, tap %s for a meeting", verb, HOTKEY, MEETING_HOTKEY)
+            self.ui.put((f"Voice Typing ready - {verb} {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
                          "#27ae60", 3000))
 
         threading.Thread(target=startup, daemon=True).start()

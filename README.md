@@ -70,7 +70,8 @@ enough for most people. If your PC has an NVIDIA card, the source version uses t
 
 **Dictate:** put the cursor where you want text, hold Right Alt, speak, let go. A short beep
 and a red "Listening…" pill show while the key is down; a lower beep when you release. The
-text is pasted a moment later. Taps shorter than a third of a second are ignored.
+text is pasted a moment later. Taps shorter than a third of a second are ignored. Prefer not to
+hold the key? Set *Dictation key works as* to **toggle** in Settings: tap to start, tap to stop.
 
 **Record a meeting:** tap Right Ctrl (rising two-tone beep; purple "Recording 00:00" pill with
 a running clock). Tap it again to stop (falling beep). The transcript is written to
@@ -106,6 +107,7 @@ prefer a text editor. New versions add their new settings automatically.
 |---|---|---|
 | `hotkey` | `right alt` | The hold-to-talk key (any single key: `right shift`, `caps lock`, `scroll lock`, `pause`, `f8`, …) |
 | `meeting_hotkey` | `right ctrl` | The tap-to-record key |
+| `dictation_mode` | `hold` | `hold` = hold the key while talking; `toggle` = tap to start, tap again to stop |
 | `meeting_hold_seconds` | `0` | Hold the meeting key this long to start or stop, so a stray tap does nothing (`0` = tap) |
 | `meeting_paste_path` | `stop` | Type the recording's file location where the cursor is: `start`, `stop`, `both`, `no` |
 | `meeting_open` | `transcript` | When done, open the `transcript`, the `folder` with the audio selected, `both`, or `no` |
