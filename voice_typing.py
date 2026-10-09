@@ -61,7 +61,7 @@ MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -250,6 +250,7 @@ class VoiceTyping:
         self.device = "cpu"
         self.meeting = None                 # the running MeetingSession, if any
         self.meeting_key_down = False
+        self.hotkey_name = self.meeting_hotkey_name = None   # set in run() after settings load
 
     # ---- model -------------------------------------------------------------------------
     def load_model(self):
@@ -283,6 +284,17 @@ class VoiceTyping:
         return " ".join(p.strip() for p in parts).strip()
 
     # ---- hotkey ------------------------------------------------------------------------
+    def key_hook(self, event):
+        """Runs for every key event. Returns False to swallow the event (only our two keys)."""
+        name = event.name
+        if name == self.hotkey_name:
+            (self.on_press if event.event_type == keyboard.KEY_DOWN else self.on_release)(event)
+            return False
+        if name == self.meeting_hotkey_name:
+            (self.on_meeting_press if event.event_type == keyboard.KEY_DOWN else self.on_meeting_release)(event)
+            return False
+        return True
+
     def on_press(self, event):
         if self.recording:              # Windows auto-repeats a held key; ignore repeats
             return
@@ -382,6 +394,8 @@ class VoiceTyping:
     # ---- main --------------------------------------------------------------------------
     def run(self):
         load_settings()
+        self.hotkey_name = keyboard.normalize_name(HOTKEY)
+        self.meeting_hotkey_name = keyboard.normalize_name(MEETING_HOTKEY)
         log.info("Voice Typing %s starting (%s); settings: %s", __version__, "exe" if FROZEN else "script", SETTINGS_PATH)
         root = tk.Tk()
         root.withdraw()
@@ -447,10 +461,10 @@ class VoiceTyping:
                 self.ui.put(("Speech model failed to load - see log", "#7f8c8d", 6000))
                 return
             threading.Thread(target=self.worker, daemon=True).start()
-            keyboard.on_press_key(HOTKEY, self.on_press, suppress=True)
-            keyboard.on_release_key(HOTKEY, self.on_release, suppress=True)
-            keyboard.on_press_key(MEETING_HOTKEY, self.on_meeting_press, suppress=True)
-            keyboard.on_release_key(MEETING_HOTKEY, self.on_meeting_release, suppress=True)
+            # One global hook, matched by key *name*. keyboard.on_press_key() matches by scan
+            # code, and Windows gives Left and Right Alt the same scan code (same for Ctrl),
+            # so it fired - and swallowed - both. The name carries the left/right distinction.
+            keyboard.hook(self.key_hook, suppress=True)
             log.info("ready - hold %s to talk, tap %s for a meeting", HOTKEY, MEETING_HOTKEY)
             self.ui.put((f"Voice Typing ready - hold {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
                          "#27ae60", 3000))
