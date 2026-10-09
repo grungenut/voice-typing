@@ -29,10 +29,15 @@ import wave
 import numpy as np
 import sounddevice as sd
 
-try:
-    import soundcard as sc                   # WASAPI loopback; must be imported on the main thread
-except Exception:                            # pragma: no cover - app still works, mic only
-    sc = None
+import sysglue
+
+sc = None
+if sysglue.IS_WIN:
+    try:
+        import soundcard as sc               # WASAPI loopback; must be imported on the main thread
+    except Exception:                        # pragma: no cover - app still works, mic only
+        sc = None
+# On macOS there is no loopback device without extra software, so meetings record the mic only.
 
 log = logging.getLogger("voice_typing.meeting")
 SR = 16000
@@ -120,6 +125,8 @@ class MeetingSession:
         # the main thread at startup (see the import at the top); worker threads then join
         # that apartment implicitly. Calling CoInitializeEx here ourselves breaks its import.
         try:
+            if sc is None:
+                raise RuntimeError("no loopback capture on this platform")
             spk = sc.default_speaker()
             mic = sc.get_microphone(spk.name, include_loopback=True)
             rate = 48000
@@ -128,8 +135,8 @@ class MeetingSession:
                 while not self._stop.is_set():
                     block = rec.record(numframes=rate // 10)
                     self._lb_q.put(_resample(block[:, 0] if block.ndim > 1 else block, rate, SR))
-        except Exception:
-            log.exception("loopback capture unavailable - recording microphone only")
+        except Exception as e:
+            log.warning("loopback capture unavailable (%s) - recording microphone only", e)
             while not self._stop.is_set():
                 time.sleep(0.1)
                 self._lb_q.put(np.zeros(SR // 10, dtype=np.float32))
@@ -260,9 +267,9 @@ class MeetingSession:
             log.info("transcript -> %s", self.final_path)
             try:
                 if self.open_mode in ("transcript", "both"):
-                    os.startfile(self.final_path)
+                    sysglue.open_path(self.final_path)
                 if self.open_mode in ("folder", "both"):
-                    subprocess.Popen(["explorer.exe", "/select,", self.wav_path])
+                    sysglue.reveal_path(self.wav_path)
             except Exception:
                 log.exception("could not open the transcript or its folder")
         except Exception:

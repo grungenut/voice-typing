@@ -13,8 +13,9 @@ How it works
   4. The text is put on the clipboard and pasted with Ctrl+V into whatever has focus, then
      the previous clipboard text is restored.
 
-Settings are in the SETTINGS block just below. Run with pythonw.exe for no console window
-(see "Start Voice Typing.cmd" next to this file).
+Settings are in settings.ini (tray icon > Settings...). Run with pythonw.exe for no console
+window (see "Start Voice Typing.cmd" next to this file). On macOS see mac/Install.command;
+the platform differences live in sysglue.py and mac_hotkeys.py.
 """
 
 import logging
@@ -25,7 +26,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-import winsound
 
 # As a windowed exe (or under pythonw) there is no console: stdout/stderr are None, and
 # libraries that print progress bars (Whisper's model download uses tqdm) crash on them.
@@ -34,18 +34,19 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
-import keyboard
 import numpy as np
 import pyperclip
 import sounddevice as sd
 
+import sysglue
 from meeting import MeetingSession
 from transcribe_file import MEDIA_TYPES, FileTranscription, ensure_ffmpeg
 from settings_window import SettingsWindow
-from tray import Tray
+if sysglue.IS_WIN:
+    from tray import Tray
 
 # ----------------------------------------------------------------------------- SETTINGS --
-HOTKEY = "right alt"       # hold to talk
+HOTKEY = sysglue.DEFAULT_HOTKEY            # hold to talk (right alt; right option on a Mac)
 LANGUAGE = "en"            # None = auto-detect (slower, and the .en models can't)
 GPU_MODEL = "turbo"        # used when a CUDA GPU is found: large-v3-turbo, best accuracy, ~1.6 GB download
 CPU_MODEL = "base.en"      # used when there is no GPU: small and quick enough on a CPU
@@ -57,7 +58,7 @@ SAMPLE_RATE = 16000        # Whisper's native rate; do not change
 
 # Meeting mode: tap the key once to start a long recording, tap again to stop. The transcript
 # (with speaker labels) and the audio land in MEETING_DIR and the transcript opens when done.
-MEETING_HOTKEY = "right ctrl"
+MEETING_HOTKEY = sysglue.DEFAULT_MEETING_HOTKEY   # right ctrl; right command on a Mac
 MEETING_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Meeting Transcripts")
 MEETING_AUDIO_DIR = ""     # where the WAV files go; "" = next to the transcripts
 MEETING_SUBFOLDERS = False # True = each meeting gets its own folder holding its transcript and audio
@@ -70,15 +71,14 @@ MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cur
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
 FROZEN = getattr(sys, "frozen", False)
 APP_DIR = os.path.dirname(sys.executable) if FROZEN else os.path.dirname(os.path.abspath(__file__))
 BUNDLE_DIR = getattr(sys, "_MEIPASS", APP_DIR)        # bundled read-only files (models, icon)
-DATA_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "VoiceTyping")
-os.makedirs(DATA_DIR, exist_ok=True)
+DATA_DIR = sysglue.data_dir()           # %LOCALAPPDATA%\VoiceTyping, or ~/Library/Application Support/VoiceTyping
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.ini")
 LOG_PATH = os.path.join(DATA_DIR if FROZEN else APP_DIR, "voice_typing.log")
 
@@ -87,11 +87,10 @@ SETTINGS_TEMPLATE = """; Voice Typing settings. Lines starting with ; are commen
 
 [voice typing]
 ; The hold-to-talk key for dictation, and the tap-to-record key for meetings. One key each.
-; Key names you can use: right alt, right ctrl, right shift, right windows, left alt, left ctrl,
-; caps lock, scroll lock, pause, insert, menu, f1 ... f12, or a plain letter or number.
+; Key names you can use: @KEY_NAMES@.
 ; Whatever key you pick stops working for everything else while Voice Typing runs.
-hotkey = right alt
-meeting_hotkey = right ctrl
+hotkey = @HOTKEY@
+meeting_hotkey = @MEETING_HOTKEY@
 
 ; Hold the meeting key this many seconds to start (and to stop) a recording, so a stray tap
 ; does nothing. A countdown shows while you hold. 0 = a quick tap starts and stops.
@@ -122,7 +121,7 @@ show_overlay = yes
 trailing_space = yes
 
 ; Where meeting transcripts (and, unless changed below, the audio) go. Any folder you like.
-meeting_dir = %USERPROFILE%\\Documents\\Meeting Transcripts
+meeting_dir = @MEETING_DIR@
 
 ; Put the audio (WAV) files in a different folder. Leave blank to keep them next to the transcripts.
 meeting_audio_dir =
@@ -142,7 +141,10 @@ meeting_threads = 8
 ; Where transcripts of existing recordings (tray icon > Transcribe a file) go.
 ; Leave blank to put each transcript next to its file.
 file_transcript_dir =
-"""
+""".replace("@KEY_NAMES@", sysglue.KEY_NAME_HELP).replace("@HOTKEY@", sysglue.DEFAULT_HOTKEY) \
+   .replace("@MEETING_HOTKEY@", sysglue.DEFAULT_MEETING_HOTKEY) \
+   .replace("@MEETING_DIR@", "%USERPROFILE%\\Documents\\Meeting Transcripts" if sysglue.IS_WIN
+            else "~/Documents/Meeting Transcripts")
 
 
 def add_new_settings():
@@ -205,7 +207,7 @@ def load_settings():
             elif isinstance(default, int):
                 value = int(raw)
             else:
-                value = os.path.expandvars(raw)
+                value = os.path.expanduser(os.path.expandvars(raw))
         except ValueError:
             log.warning("settings.ini: bad value for %s (%r) - using default %r", key, raw, default)
             continue
@@ -302,6 +304,38 @@ class Overlay:
         self.win.withdraw()
 
 
+class PillMenu:
+    """macOS stand-in for the tray icon: a tiny always-on-top pill in the bottom-right corner
+    that opens the same menu when clicked."""
+
+    def __init__(self, root: tk.Tk, items):
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.attributes("-topmost", True)
+        self.win.attributes("-alpha", 0.85)
+        label = tk.Label(self.win, text="Voice Typing", font=("Helvetica", 10, "bold"), fg="white",
+                         bg="#5b2c8f", padx=10, pady=4, cursor="hand2")
+        label.pack()
+        self.menu = tk.Menu(self.win, tearoff=0)
+        for item in items:
+            if item is None:
+                self.menu.add_separator()
+            else:
+                self.menu.add_command(label=item[0], command=item[1])
+        label.bind("<Button-1>", self.popup)
+        label.bind("<Button-2>", self.popup)
+        self.win.update_idletasks()
+        w, h = self.win.winfo_reqwidth(), self.win.winfo_reqheight()
+        sw, sh = self.win.winfo_screenwidth(), self.win.winfo_screenheight()
+        self.win.geometry(f"{w}x{h}+{sw - w - 16}+{sh - h - 60}")
+
+    def popup(self, event):
+        try:
+            self.menu.tk_popup(event.x_root, event.y_root - 10)
+        finally:
+            self.menu.grab_release()
+
+
 class VoiceTyping:
     def __init__(self):
         self.recorder = Recorder()
@@ -354,21 +388,17 @@ class VoiceTyping:
     # ---- hotkey ------------------------------------------------------------------------
     @staticmethod
     def key_names(setting: str) -> set:
-        """Event names that mean this key. Windows calls the left modifiers plain alt / ctrl / shift."""
-        name = keyboard.normalize_name(setting.strip().lower())
-        names = {name}
-        if name.startswith("left ") and name != "left windows":
-            names.add(name[5:])
-        return names
+        """Event names that mean this key (Windows calls the left modifiers plain alt / ctrl / shift)."""
+        return sysglue.key_name_variants(setting)
 
     def key_hook(self, event):
         """Runs for every key event. Returns False to swallow the event (only our two keys)."""
         name = event.name
         if name in self.hotkey_names:
-            (self.on_press if event.event_type == keyboard.KEY_DOWN else self.on_release)(event)
+            (self.on_press if event.down else self.on_release)(event)
             return False
         if name in self.meeting_hotkey_names:
-            (self.on_meeting_press if event.event_type == keyboard.KEY_DOWN else self.on_meeting_release)(event)
+            (self.on_meeting_press if event.down else self.on_meeting_release)(event)
             return False
         return True
 
@@ -385,7 +415,7 @@ class VoiceTyping:
             self.ui.put(("Microphone error", "#7f8c8d", 2000))
             return
         if BEEPS:
-            threading.Thread(target=winsound.Beep, args=(880, 70), daemon=True).start()
+            threading.Thread(target=sysglue.beep, args=(880, 70), daemon=True).start()
         self.ui.put(("●  Listening...", "#c0392b", None))
 
     def on_release(self, event):
@@ -395,7 +425,7 @@ class VoiceTyping:
         audio = self.recorder.stop()
         held = time.time() - self.pressed_at
         if BEEPS:
-            threading.Thread(target=winsound.Beep, args=(660, 70), daemon=True).start()
+            threading.Thread(target=sysglue.beep, args=(660, 70), daemon=True).start()
         if held < MIN_SECONDS or len(audio) < SAMPLE_RATE * MIN_SECONDS:
             self.ui.put(None)
             return
@@ -455,13 +485,13 @@ class VoiceTyping:
                 self.ui.put(("Meeting recording failed to start - see log", "#7f8c8d", 4000))
                 return
             if BEEPS:
-                threading.Thread(target=lambda: (winsound.Beep(880, 70), winsound.Beep(1100, 90)), daemon=True).start()
+                threading.Thread(target=lambda: (sysglue.beep(880, 70), sysglue.beep(1100, 90)), daemon=True).start()
             self.paste_meeting_path("start")
         elif self.meeting.state == "recording":
             self.paste_meeting_path("stop")
             self.meeting.stop()
             if BEEPS:
-                threading.Thread(target=lambda: (winsound.Beep(1100, 70), winsound.Beep(660, 90)), daemon=True).start()
+                threading.Thread(target=lambda: (sysglue.beep(1100, 70), sysglue.beep(660, 90)), daemon=True).start()
         # else: still finalizing the last one - ignore the tap
 
     def on_meeting_release(self, event):
@@ -524,7 +554,7 @@ class VoiceTyping:
             previous = None
         pyperclip.copy(text)
         time.sleep(0.05)
-        keyboard.send("ctrl+v")
+        sysglue.send_paste()
         time.sleep(0.25)                    # let the app read the clipboard before we restore it
         if previous:
             try:
@@ -550,19 +580,24 @@ class VoiceTyping:
 
         def open_transcripts():
             os.makedirs(MEETING_DIR, exist_ok=True)
-            os.startfile(MEETING_DIR)
+            sysglue.open_path(MEETING_DIR)
 
-        tray = Tray(f"Voice Typing {__version__} - hold {HOTKEY} to dictate, tap {MEETING_HOTKEY} for a meeting",
-                    icon_path(), [
-                        ("Transcribe a file...", lambda: self.ui.put("pick_file")),
-                        ("Settings...", lambda: self.ui.put("settings")),
-                        ("Open transcripts folder", open_transcripts),
-                        ("View log", lambda: os.startfile(LOG_PATH)),
-                        None,
-                        ("Quit Voice Typing", lambda: self.ui.put("quit")),
-                    ])
+        menu_items = [
+            ("Transcribe a file...", lambda: self.ui.put("pick_file")),
+            ("Settings...", lambda: self.ui.put("settings")),
+            ("Open transcripts folder", open_transcripts),
+            ("View log", lambda: sysglue.open_path(LOG_PATH)),
+            None,
+            ("Quit Voice Typing", lambda: self.ui.put("quit")),
+        ]
+        tray = None
         if not self.files:                  # a command-line run just does its files and exits
-            tray.start()
+            if sysglue.IS_WIN:
+                tray = Tray(f"Voice Typing {__version__} - hold {HOTKEY} to dictate, tap {MEETING_HOTKEY} for a meeting",
+                            icon_path(), menu_items)
+                tray.start()
+            else:
+                PillMenu(root, menu_items)  # macOS: a small always-visible pill with the same menu
 
         def shutdown():
             # A meeting in progress is stopped and allowed to finish writing its transcript first.
@@ -573,10 +608,10 @@ class VoiceTyping:
                 return
             log.info("quit")
             try:
-                keyboard.unhook_all()
+                sysglue.remove_hooks()
             except Exception:
                 pass
-            if not self.files:
+            if tray is not None:
                 tray.stop()
             root.quit()
 
@@ -629,10 +664,16 @@ class VoiceTyping:
                 return
             threading.Thread(target=self.worker, daemon=True).start()
             threading.Thread(target=self.file_worker, daemon=True).start()
-            # One global hook, matched by key *name*. keyboard.on_press_key() matches by scan
-            # code, and Windows gives Left and Right Alt the same scan code (same for Ctrl),
-            # so it fired - and swallowed - both. The name carries the left/right distinction.
-            keyboard.hook(self.key_hook, suppress=True)
+            # One global hook, matched by key *name*. (On Windows, keyboard.on_press_key() matches
+            # by scan code, and Left and Right Alt share one, so it fired - and swallowed - both.)
+            # On macOS the hook needs the Accessibility permission; ask, then keep trying.
+            if not sysglue.install_hook(self.key_hook):
+                sysglue.accessibility_prompt()
+                log.warning("hotkeys unavailable - waiting for the Accessibility permission")
+                while not sysglue.install_hook(self.key_hook):
+                    self.ui.put(("Allow Voice Typing (or Python) under System Settings > Privacy & Security > "
+                                 "Accessibility, then wait a moment", "#7f8c8d", None))
+                    time.sleep(3)
             log.info("ready - hold %s to talk, tap %s for a meeting", HOTKEY, MEETING_HOTKEY)
             self.ui.put((f"Voice Typing ready - hold {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
                          "#27ae60", 3000))

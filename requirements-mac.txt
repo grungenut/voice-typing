@@ -1,0 +1,7 @@
+openai-whisper
+numpy
+sounddevice
+pyperclip
+sherpa-onnx
+pyobjc-framework-Quartz
+pyobjc-framework-ApplicationServices

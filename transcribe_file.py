@@ -26,6 +26,7 @@ import zipfile
 
 import numpy as np
 
+import sysglue
 from meeting import SR, MeetingSession, _hms, _ms, _resample
 
 log = logging.getLogger("voice_typing.file")
@@ -38,17 +39,23 @@ MEDIA_TYPES = [
 PIECE_SECONDS = 5 * 60
 FFMPEG_ZIP_URL = ("https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
                   "ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip")
-CREATE_NO_WINDOW = 0x08000000
 
 
 # ---- FFmpeg ------------------------------------------------------------------------------
 def find_ffmpeg(bundle_dir: str, data_dir: str):
-    """ffmpeg.exe: bundled with the exe, downloaded into app data, or on the PATH."""
+    """ffmpeg: bundled with the exe, downloaded into app data, on the PATH, or (macOS) from Homebrew."""
+    exe = "ffmpeg.exe" if sysglue.IS_WIN else "ffmpeg"
     for d in (os.path.join(bundle_dir, "ffmpeg"), os.path.join(data_dir, "ffmpeg")):
-        p = os.path.join(d, "ffmpeg.exe")
+        p = os.path.join(d, exe)
         if os.path.exists(p):
             return p
-    return shutil.which("ffmpeg")
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for p in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"):
+        if os.path.exists(p):
+            return p
+    return None
 
 
 def download_ffmpeg(dest_dir: str, progress=lambda text: None) -> str:
@@ -81,8 +88,12 @@ def download_ffmpeg(dest_dir: str, progress=lambda text: None) -> str:
     return exe
 
 
-def ensure_ffmpeg(bundle_dir: str, data_dir: str, progress=lambda text: None) -> str:
-    return find_ffmpeg(bundle_dir, data_dir) or download_ffmpeg(os.path.join(data_dir, "ffmpeg"), progress)
+def ensure_ffmpeg(bundle_dir: str, data_dir: str, progress=lambda text: None):
+    """Windows: find or download FFmpeg. macOS: find it if installed, else None (afconvert is used)."""
+    found = find_ffmpeg(bundle_dir, data_dir)
+    if found or not sysglue.IS_WIN:
+        return found
+    return download_ffmpeg(os.path.join(data_dir, "ffmpeg"), progress)
 
 
 # ---- decoding ----------------------------------------------------------------------------
@@ -112,14 +123,39 @@ def decode_audio(path: str, ffmpeg) -> np.ndarray:
         except Exception as e:                   # float WAV, odd header: let FFmpeg have a go
             log.info("wave module could not read %s (%s); using FFmpeg", os.path.basename(path), e)
     exe = ffmpeg() if callable(ffmpeg) else ffmpeg
+    if exe is None and sysglue.IS_MAC:
+        return decode_with_afconvert(path)
+    if exe is None:
+        raise ValueError("FFmpeg is not available to decode this file")
     cmd = [exe, "-nostdin", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"]
-    r = subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
+    r = subprocess.run(cmd, capture_output=True, **sysglue.NO_WINDOW)
     if r.returncode != 0:
         err = r.stderr.decode("utf-8", "replace").strip().splitlines()
         raise ValueError(err[-1] if err else f"FFmpeg exited with code {r.returncode}")
     if len(r.stdout) < 2:
         raise ValueError("this file has no audio")
     return np.frombuffer(r.stdout, np.int16).astype(np.float32) / 32768.0
+
+
+def decode_with_afconvert(path: str) -> np.ndarray:
+    """macOS without FFmpeg: the system's own converter handles MP3, M4A/AAC, MP4/MOV audio,
+    AIFF, CAF and more (not MKV, WebM or Opus - install FFmpeg with Homebrew for those)."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        cmd = ["afconvert", "-f", "WAVE", "-d", f"LEI16@{SR}", "-c", "1", path, tmp]
+        r = subprocess.run(cmd, capture_output=True)
+        if r.returncode != 0:
+            err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+            raise ValueError((err[-1] if err else "afconvert failed") +
+                             " - for this file type install FFmpeg: brew install ffmpeg")
+        return decode_wav(tmp)
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def _unique(path: str) -> str:
@@ -193,9 +229,9 @@ class FileTranscription(MeetingSession):
             self.ui.put(("Transcript saved", "#27ae60", 3000))
             try:
                 if self.open_mode in ("transcript", "both"):
-                    os.startfile(self.final_path)
+                    sysglue.open_path(self.final_path)
                 if self.open_mode in ("folder", "both"):
-                    subprocess.Popen(["explorer.exe", "/select,", self.final_path])
+                    sysglue.reveal_path(self.final_path)
             except Exception:
                 log.exception("could not open the transcript or its folder")
         except Exception as e:

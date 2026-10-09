@@ -3,7 +3,7 @@
 Hold **Right Alt**, talk, let go, and the words are typed wherever your cursor is. Tap
 **Right Ctrl** to record a meeting and get a transcript with speaker labels.
 
-Everything runs on your own Windows PC. No account, no subscription, no API key, and no audio
+Everything runs on your own PC or Mac. No account, no subscription, no API key, and no audio
 ever leaves the machine.
 
 - **Dictation** works in any program: email, Word, a browser, a chat box, a terminal.
@@ -16,7 +16,7 @@ Speech recognition is OpenAI's open-source [Whisper](https://github.com/openai/w
 model. Speaker labeling uses [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) with the
 pyannote segmentation model and a 3D-Speaker embedding model.
 
-## Install (the easy way)
+## Install on Windows (the easy way)
 
 1. Download **`VoiceTyping-Setup-<version>.exe`** from the
    [Releases](../../releases) page (about 180 MB).
@@ -34,7 +34,26 @@ Windows Settings → Apps like any other program.
 
 Requirements: Windows 10 or 11 (64-bit), a microphone, about 1 GB of disk space.
 
-## Install from source (for NVIDIA graphics cards)
+## Install on a Mac
+
+1. Click the green **Code** button → **Download ZIP**, unzip it.
+2. In the `mac` folder, right-click **`Install.command`** → **Open** → **Open** (macOS blocks a
+   plain double-click on downloaded scripts). It needs Python 3.10–3.13: if none is installed it
+   says so and points to [python.org](https://www.python.org/downloads/macos/). It then installs
+   the libraries and models (about 600 MB) and makes **Voice Typing** in your Applications folder.
+3. Open Voice Typing. Allow the **Microphone** when asked, then switch on Voice Typing (it may
+   appear as "Python") under **System Settings → Privacy & Security → Accessibility**. That is
+   what lets it see the hotkeys and paste.
+4. Hold **Right Option** and talk; tap **Right Command** to record a meeting. The small "Voice
+   Typing" pill at the bottom right of the screen is the menu (settings, transcribe a file, quit).
+
+Mac notes: it runs on the processor (no NVIDIA), so the compact English model is used. Meeting
+mode records the microphone only, since macOS has no built-in way to capture call audio; put the
+call on speaker. MP3, M4A, MP4 and MOV files transcribe out of the box; for MKV, WebM or Opus,
+install FFmpeg (`brew install ffmpeg`). `Uninstall.command` removes everything. The Mac version
+is new and has had less testing than the Windows one.
+
+## Install from source on Windows (for NVIDIA graphics cards)
 
 The installer above runs on the CPU with a compact English model, which is accurate and fast
 enough for most people. If your PC has an NVIDIA card, the source version uses the large
@@ -62,7 +81,7 @@ about two to three minutes per hour of audio. While recording, a `.live.txt` fil
 folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-meeting.
 
 Right Alt and Right Ctrl are reserved for Voice Typing while it runs (programs never see
-them). Left Alt and Left Ctrl work as usual.
+them). Left Alt and Left Ctrl work as usual. On a Mac the keys are Right Option and Right Command.
 
 ## Transcribing an existing recording or video
 
@@ -78,7 +97,8 @@ installer includes it; the source install downloads it once (about 75 MB) when f
 
 ## Settings
 
-Tray icon → **Settings...** opens a window with every setting explained. **Save and restart**
+Tray icon → **Settings...** opens a window with every setting. Hover the **?** beside a
+setting for what it does and its options (click the ? to keep it open). **Save and restart**
 applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
 prefer a text editor. New versions add their new settings automatically.
 
