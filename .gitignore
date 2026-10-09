@@ -3,5 +3,6 @@ models/
 __pycache__/
 *.log
 build/models/
+build/ffmpeg/
 build/work/
 dist/

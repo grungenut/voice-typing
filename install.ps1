@@ -10,6 +10,8 @@
 #   4. Installs the other libraries from requirements.txt.
 #   5. Downloads the two speaker-labeling models (33 MB) into %LOCALAPPDATA%\VoiceTyping\models.
 #   6. Downloads the Whisper speech model so the first start is not slow.
+#   7. Downloads FFmpeg (LGPL build, 75 MB) into %LOCALAPPDATA%\VoiceTyping\ffmpeg so existing
+#      MP3/MP4/video files can be transcribed. Skipped if it is already there.
 #
 # To uninstall: delete %LOCALAPPDATA%\VoiceTyping, %USERPROFILE%\.cache\whisper, and this folder.
 
@@ -107,6 +109,23 @@ if (-not (Test-Path $seg) -or -not (Test-Path $emb)) { Fail "Speaker models are 
 Say "Downloading the Whisper speech model (1.5 GB with an NVIDIA card, 140 MB without)"
 & $venvPy -c "import torch, whisper; name = 'turbo' if torch.cuda.is_available() else 'base.en'; whisper.load_model(name); print('   Whisper model ready:', name, '| GPU:', torch.cuda.is_available())"
 if ($LASTEXITCODE -ne 0) { Fail "Whisper model download failed." }
+
+# --- 7. FFmpeg (decodes MP3/MP4/video files for "Transcribe a file") --------------------
+$ffdir = Join-Path $home_ "ffmpeg"
+if (-not (Test-Path (Join-Path $ffdir "ffmpeg.exe"))) {
+    Say "Downloading FFmpeg (LGPL build, 75 MB) for transcribing existing recordings"
+    try {
+        New-Item -ItemType Directory -Force $ffdir | Out-Null
+        $zip = Join-Path $env:TEMP "vt-ffmpeg.zip"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip" -OutFile $zip
+        $tmp = Join-Path $env:TEMP "vt-ffmpeg"; Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        $inner = Get-ChildItem $tmp -Directory | Select-Object -First 1
+        Copy-Item (Join-Path $inner.FullName "bin\*") $ffdir -Force
+        Get-ChildItem $inner.FullName -File -Filter "LICENSE*" | Copy-Item -Destination $ffdir -Force
+        Remove-Item -Recurse -Force $tmp, $zip -ErrorAction SilentlyContinue
+    } catch { Write-Host "   FFmpeg download failed ($($_.Exception.Message)); Voice Typing will fetch it when first needed." }
+} else { Say "FFmpeg already present" }
 
 Say "Done. Double-click 'Start Voice Typing.cmd' to run it, or 'Add to Startup.cmd' to run it at every sign-in."
 exit 0

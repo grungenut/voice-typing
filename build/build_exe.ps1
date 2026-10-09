@@ -8,6 +8,7 @@
 #      GitHub's 2 GB release limit; NVIDIA users use Install.cmd from source instead).
 #   2. The two speaker models into build\models (copied from the installed app data if present,
 #      else downloaded).
+#   2b. FFmpeg (LGPL shared build) into build\ffmpeg, bundled so MP3/MP4 files can be transcribed.
 #   3. THIRD-PARTY-NOTICES.md regenerated from the build environment.
 #   4. PyInstaller -> dist\Voice Typing\  (one folder, no console)
 #   5. Inno Setup  -> dist\VoiceTyping-Setup-<version>.exe
@@ -65,6 +66,32 @@ if (-not (Test-Path (Join-Path $models "3dspeaker_speech_eres2net_sv_en_voxceleb
     Remove-Item -Recurse -Force $tmp
     Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx" -OutFile (Join-Path $models "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx")
 }
+
+# --- 2b. FFmpeg -------------------------------------------------------------------------
+$ff = Join-Path $root "build\ffmpeg"
+if (-not (Test-Path (Join-Path $ff "ffmpeg.exe"))) {
+    $installedFf = Join-Path $env:LOCALAPPDATA "VoiceTyping\ffmpeg"
+    if (Test-Path (Join-Path $installedFf "ffmpeg.exe")) {
+        Say "Copying FFmpeg from the installed app data"
+        New-Item -ItemType Directory -Force $ff | Out-Null
+        Copy-Item (Join-Path $installedFf "*") $ff -Force
+    } else {
+        Say "Downloading FFmpeg (LGPL shared build)"
+        $ProgressPreference = "SilentlyContinue"
+        New-Item -ItemType Directory -Force $ff | Out-Null
+        $zip = Join-Path $env:TEMP "vt-ffmpeg.zip"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip" -OutFile $zip
+        $tmp = Join-Path $env:TEMP "vt-ffmpeg"; Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        Expand-Archive -Path $zip -DestinationPath $tmp -Force
+        $inner = Get-ChildItem $tmp -Directory | Select-Object -First 1
+        Copy-Item (Join-Path $inner.FullName "bin\*") $ff -Force
+        Get-ChildItem $inner.FullName -File -Filter "LICENSE*" | Copy-Item -Destination $ff -Force
+        Remove-Item -Recurse -Force $tmp, $zip -ErrorAction SilentlyContinue
+    }
+}
+if (-not (Test-Path (Join-Path $ff "ffmpeg.exe"))) { Fail "build\ffmpeg\ffmpeg.exe is missing" }
+# Only ffmpeg.exe and its DLLs are shipped (not ffplay/ffprobe).
+Get-ChildItem $ff -File | Where-Object { $_.Name -in @("ffplay.exe", "ffprobe.exe") } | Remove-Item -Force
 
 # --- 3. third-party notices -------------------------------------------------------------
 Say "Writing THIRD-PARTY-NOTICES.md"

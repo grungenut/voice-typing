@@ -27,8 +27,9 @@ pyannote segmentation model and a 3D-Speaker embedding model.
 4. The first start downloads the speech model (about 140 MB) once. A small gray pill near
    the bottom of the screen shows progress; a green "ready" pill means it is working.
 
-A microphone icon appears in the notification area (bottom right, by the clock). Click it
-for **settings**, your **transcripts folder**, the **log**, and **Quit**. Uninstall from
+A microphone icon appears in the notification area (bottom right, by the clock; it may be
+under the **^** "hidden icons" arrow). Click it to **transcribe a file**, open **settings**,
+your **transcripts folder**, the **log**, or **Quit**. Uninstall from
 Windows Settings → Apps like any other program.
 
 Requirements: Windows 10 or 11 (64-bit), a microphone, about 1 GB of disk space.
@@ -63,11 +64,23 @@ folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-mee
 Right Alt and Right Ctrl are reserved for Voice Typing while it runs (programs never see
 them). Left Alt and Left Ctrl work as usual.
 
+## Transcribing an existing recording or video
+
+Tray icon → **Transcribe a file...** and pick an MP3, M4A, WAV, MP4, MOV, MKV, WebM or most
+other audio or video files (several at once is fine). The transcript, with speaker labels and
+time stamps, is written next to the file as `<name> transcript.txt` and opens when ready. A
+one-hour recording takes a few minutes with an NVIDIA card, longer on the CPU. You can also
+drag files onto `Voice Typing.exe` (or run `voice_typing.py <file>`): that copy transcribes
+them and exits.
+
+Anything other than WAV is decoded by [FFmpeg](https://ffmpeg.org) (LGPL build). The
+installer includes it; the source install downloads it once (about 75 MB) when first needed.
+
 ## Settings
 
-Tray icon → **Open settings** opens `settings.ini` in Notepad (it lives in
-`%LOCALAPPDATA%\VoiceTyping`). Every line is explained in the file. Quit and start Voice
-Typing again after saving. New versions add their new settings to your file automatically.
+Tray icon → **Settings...** opens a window with every setting explained. **Save and restart**
+applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
+prefer a text editor. New versions add their new settings automatically.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -86,6 +99,7 @@ Typing again after saving. New versions add their new settings to your file auto
 | `meeting_speakers` | `0` | `0` = detect the number of speakers, or force it (`2`, `3`, …) |
 | `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
 | `meeting_threads` | `8` | CPU threads for speaker labeling |
+| `file_transcript_dir` | blank | Where transcripts of existing files go; blank = next to the file |
 
 ## Recording other people
 
@@ -127,4 +141,5 @@ Voice Typing is MIT-licensed (see `LICENSE`). It is built from open-source compo
 licenses are listed with full text in `THIRD-PARTY-NOTICES.md`, which is also installed with
 the program (Start menu → Third-party notices). Whisper is MIT; sherpa-onnx and the
 3D-Speaker model are Apache 2.0; the pyannote segmentation model is MIT; PyTorch is BSD-style.
-Nothing in the program is under a copyleft license.
+FFmpeg is LGPL 2.1 and is shipped as a separate program, unmodified, with its source
+available from the build's project page. Nothing is under the GPL.

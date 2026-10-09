@@ -13,6 +13,7 @@ datas = [
     (os.path.join(root, "LICENSE"), "."),
     (os.path.join(root, "THIRD-PARTY-NOTICES.md"), "."),
     (models, "models"),
+    (os.path.join(root, "build", "ffmpeg"), "ffmpeg"),   # LGPL FFmpeg, run as a separate program
 ]
 datas += collect_data_files("whisper")                 # mel filters + tokenizer files
 datas += collect_data_files("sherpa_onnx")

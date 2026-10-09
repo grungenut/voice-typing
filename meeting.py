@@ -271,11 +271,12 @@ class MeetingSession:
         finally:
             self.state = "done"
 
-    def _diarize(self):
+    def _diarize(self, audio=None):
         import sherpa_onnx
 
-        with wave.open(self.wav_path) as w:
-            audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
+        if audio is None:
+            with wave.open(self.wav_path) as w:
+                audio = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
         seg_model = os.path.join(self.models_dir, "pyannote-segmentation-3-0.onnx")
         emb_model = os.path.join(self.models_dir, "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx")
         cfg = sherpa_onnx.OfflineSpeakerDiarizationConfig(
@@ -333,7 +334,8 @@ class MeetingSession:
 
         n_spk = len(order)
         with open(self.final_path, "w", encoding="utf-8") as f:
-            f.write(f"Meeting transcript - {self.started:%A, %B %d, %Y, %I:%M %p}\n")
+            f.write(getattr(self, "title", None) or f"Meeting transcript - {self.started:%A, %B %d, %Y, %I:%M %p}")
+            f.write("\n")
             f.write(f"Length {_hms(length)} - {n_spk} speaker{'s' if n_spk != 1 else ''} detected"
                     + (" (labels unavailable)" if not turns else "") + "\n")
             same_folder = os.path.dirname(self.wav_path) == os.path.dirname(self.final_path)

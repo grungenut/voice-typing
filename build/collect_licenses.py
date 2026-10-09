@@ -28,6 +28,10 @@ MODELS = [
     ("3D-Speaker ERes2Net VoxCeleb (speaker embedding model)", "Alibaba DAMO Academy, 3D-Speaker project", "Apache-2.0",
      "https://github.com/modelscope/3D-Speaker (ONNX export from https://github.com/k2-fsa/sherpa-onnx)",
      "Bundled as models\\3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx."),
+    ("FFmpeg (audio/video decoding for 'Transcribe a file')", "FFmpeg developers", "LGPL-2.1-or-later (LGPL build, no GPL components)",
+     "https://ffmpeg.org - build from https://github.com/BtbN/FFmpeg-Builds",
+     "Bundled as ffmpeg\\ffmpeg.exe and its DLLs, run as a separate program; the source install downloads the same build on first use. "
+     "Source code for this build: https://github.com/BtbN/FFmpeg-Builds (the LGPL license text is below)."),
     ("ONNX Runtime", "Microsoft", "MIT", "https://github.com/microsoft/onnxruntime",
      "Bundled inside sherpa-onnx as onnxruntime.dll."),
     ("PortAudio", "PortAudio community", "MIT", "http://www.portaudio.com",
@@ -100,6 +104,12 @@ def main():
     for d in dists:
         for fname, text in license_text(d):
             print(f"### {d.metadata['Name']} {d.metadata['Version']} - {fname}\n\n```\n{text}\n```\n", file=out)
+    # FFmpeg: the LGPL 2.1 text (kept in build/licenses) and the build's own license file if present.
+    here = os.path.dirname(os.path.abspath(__file__))
+    for label, path in (("FFmpeg - GNU Lesser General Public License 2.1", os.path.join(here, "licenses", "LGPL-2.1.txt")),
+                        ("FFmpeg build - LICENSE.txt", os.path.join(here, "ffmpeg", "LICENSE.txt"))):
+        if os.path.exists(path):
+            print(f"### {label}\n\n```\n" + open(path, encoding="utf-8", errors="replace").read().strip() + "\n```\n", file=out)
     if out is not sys.stdout:
         out.close()
 

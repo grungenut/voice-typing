@@ -20,6 +20,7 @@ Settings are in the SETTINGS block just below. Run with pythonw.exe for no conso
 import logging
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -39,6 +40,8 @@ import pyperclip
 import sounddevice as sd
 
 from meeting import MeetingSession
+from transcribe_file import MEDIA_TYPES, FileTranscription, ensure_ffmpeg
+from settings_window import SettingsWindow
 from tray import Tray
 
 # ----------------------------------------------------------------------------- SETTINGS --
@@ -61,6 +64,7 @@ MEETING_SUBFOLDERS = False # True = each meeting gets its own folder holding its
 MEETING_SPEAKERS = 0       # 0 = work out how many speakers; or force a number (2, 3, ...)
 MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while recording
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
+FILE_TRANSCRIPT_DIR = ""   # where transcripts of existing files go; "" = next to the file
 MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
 MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cursor is: start, stop, both, no
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
@@ -134,6 +138,10 @@ meeting_chunk_seconds = 30
 
 ; CPU threads used for speaker labeling at the end of a meeting.
 meeting_threads = 8
+
+; Where transcripts of existing recordings (tray icon > Transcribe a file) go.
+; Leave blank to put each transcript next to its file.
+file_transcript_dir =
 """
 
 
@@ -308,6 +316,9 @@ class VoiceTyping:
         self.meeting_key_down = False
         self.hotkey_names = self.meeting_hotkey_names = set()   # set in run() after settings load
         self.meeting_press_id = 0           # bumps on each meeting-key press (hold mode)
+        self.files = []                     # files to transcribe when started from the command line
+        self.restart_requested = False      # settings saved: start a fresh copy after quitting
+        self.file_queue = queue.Queue()     # files picked from the tray menu
 
     # ---- model -------------------------------------------------------------------------
     def load_model(self):
@@ -456,6 +467,33 @@ class VoiceTyping:
     def on_meeting_release(self, event):
         self.meeting_key_down = False
 
+    # ---- transcribe existing files -----------------------------------------------------
+    def pick_files(self, root):
+        """Runs on the tk thread (from pump): file dialog, then queue the files."""
+        from tkinter import filedialog
+        paths = filedialog.askopenfilenames(parent=root, title="Transcribe a recording or video",
+                                            filetypes=MEDIA_TYPES)
+        for p in paths:
+            self.file_queue.put(p)
+
+    def transcribe_file(self, path):
+        ffmpeg = lambda: ensure_ffmpeg(BUNDLE_DIR, DATA_DIR, lambda text: self.ui.put((text, "#2980b9", None)))
+        job = FileTranscription(path, self.model, self.model_lock, self.device, models_dir(), self.ui, ffmpeg,
+                                out_dir=FILE_TRANSCRIPT_DIR.strip() or None, speakers=MEETING_SPEAKERS,
+                                threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower())
+        job.run()
+
+    def file_worker(self):
+        """Transcribes files picked from the tray menu, one after another."""
+        while True:
+            path = self.file_queue.get()
+            if path is None:
+                return
+            try:
+                self.transcribe_file(path)
+            except Exception:
+                log.exception("file transcription failed: %s", path)
+
     # ---- worker ------------------------------------------------------------------------
     def worker(self):
         while True:
@@ -502,7 +540,9 @@ class VoiceTyping:
         if self.hotkey_names & self.meeting_hotkey_names:
             log.warning("hotkey and meeting_hotkey are the same key (%s) - meeting mode disabled", HOTKEY)
             self.meeting_hotkey_names = set()
-        log.info("Voice Typing %s starting (%s); settings: %s", __version__, "exe" if FROZEN else "script", SETTINGS_PATH)
+        self.files = [a for a in sys.argv[1:] if os.path.isfile(a)]
+        log.info("Voice Typing %s starting (%s); settings: %s%s", __version__, "exe" if FROZEN else "script",
+                 SETTINGS_PATH, f"; {len(self.files)} file(s) to transcribe" if self.files else "")
         root = tk.Tk()
         root.withdraw()
         overlay = Overlay(root) if SHOW_OVERLAY else None
@@ -514,13 +554,15 @@ class VoiceTyping:
 
         tray = Tray(f"Voice Typing {__version__} - hold {HOTKEY} to dictate, tap {MEETING_HOTKEY} for a meeting",
                     icon_path(), [
-                        ("Open settings", lambda: os.startfile(SETTINGS_PATH)),
+                        ("Transcribe a file...", lambda: self.ui.put("pick_file")),
+                        ("Settings...", lambda: self.ui.put("settings")),
                         ("Open transcripts folder", open_transcripts),
                         ("View log", lambda: os.startfile(LOG_PATH)),
                         None,
                         ("Quit Voice Typing", lambda: self.ui.put("quit")),
                     ])
-        tray.start()
+        if not self.files:                  # a command-line run just does its files and exits
+            tray.start()
 
         def shutdown():
             # A meeting in progress is stopped and allowed to finish writing its transcript first.
@@ -534,13 +576,24 @@ class VoiceTyping:
                 keyboard.unhook_all()
             except Exception:
                 pass
-            tray.stop()
+            if not self.files:
+                tray.stop()
             root.quit()
 
         def pump():
             try:
                 while True:
                     msg = self.ui.get_nowait()
+                    if msg == "pick_file":
+                        self.pick_files(root)
+                        continue
+                    if msg == "settings":
+                        SettingsWindow(root, SETTINGS_PATH, SETTINGS_TEMPLATE, lambda: self.ui.put("restart"),
+                                       icon_path(), __version__)
+                        continue
+                    if msg == "restart":
+                        self.restart_requested = True
+                        msg = "quit"
                     if msg == "quit":
                         if not quitting["on"]:
                             quitting["on"] = True
@@ -566,7 +619,16 @@ class VoiceTyping:
                 log.exception("model failed to load")
                 self.ui.put(("Speech model failed to load - see log", "#7f8c8d", 6000))
                 return
+            if self.files:
+                for path in self.files:
+                    try:
+                        self.transcribe_file(path)
+                    except Exception:
+                        log.exception("file transcription failed: %s", path)
+                self.ui.put("quit")
+                return
             threading.Thread(target=self.worker, daemon=True).start()
+            threading.Thread(target=self.file_worker, daemon=True).start()
             # One global hook, matched by key *name*. keyboard.on_press_key() matches by scan
             # code, and Windows gives Left and Right Alt the same scan code (same for Ctrl),
             # so it fired - and swallowed - both. The name carries the left/right distinction.
@@ -578,6 +640,10 @@ class VoiceTyping:
         threading.Thread(target=startup, daemon=True).start()
         root.after(40, pump)
         root.mainloop()
+        if self.restart_requested:
+            log.info("restarting to apply settings")
+            args = [sys.executable] if FROZEN else [sys.executable, os.path.abspath(__file__)]
+            subprocess.Popen(args, close_fds=True, cwd=APP_DIR)
 
 
 if __name__ == "__main__":
