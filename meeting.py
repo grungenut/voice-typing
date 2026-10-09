@@ -21,6 +21,7 @@ import datetime
 import logging
 import os
 import queue
+import subprocess
 import threading
 import time
 import wave
@@ -56,8 +57,9 @@ def _ms(seconds: float) -> str:
 
 class MeetingSession:
     def __init__(self, model, model_lock, device, out_dir, models_dir, ui, speakers=0,
-                 chunk_seconds=30, threads=8, language="en"):
+                 chunk_seconds=30, threads=8, language="en", open_mode="transcript"):
         self.model, self.model_lock, self.device = model, model_lock, device
+        self.open_mode = open_mode           # transcript | folder | both | no
         self.out_dir, self.models_dir, self.ui = out_dir, models_dir, ui
         self.speakers, self.chunk_seconds, self.threads, self.language = speakers, chunk_seconds, threads, language
 
@@ -247,9 +249,12 @@ class MeetingSession:
             self.ui.put(("Transcript saved", "#27ae60", 3000))
             log.info("transcript -> %s", self.final_path)
             try:
-                os.startfile(self.final_path)
+                if self.open_mode in ("transcript", "both"):
+                    os.startfile(self.final_path)
+                if self.open_mode in ("folder", "both"):
+                    subprocess.Popen(["explorer.exe", "/select,", self.wav_path])
             except Exception:
-                log.exception("could not open the transcript")
+                log.exception("could not open the transcript or its folder")
         except Exception:
             log.exception("finalize failed")
             self.ui.put(("Meeting transcript failed - see log", "#7f8c8d", 5000))

@@ -54,7 +54,9 @@ text is pasted a moment later. Taps shorter than a third of a second are ignored
 
 **Record a meeting:** tap Right Ctrl (rising two-tone beep; purple "Recording 00:00" pill with
 a running clock). Tap it again to stop (falling beep). The transcript is written to
-`Documents\Meeting Transcripts\` and opens in Notepad when ready. Labeling speakers takes
+`Documents\Meeting Transcripts\` and opens in Notepad when ready. When you stop, the file's
+location is typed where your cursor is, so your notes say where the recording went (see
+settings to change or turn that off). Labeling speakers takes
 about two to three minutes per hour of audio. While recording, a `.live.txt` file in the same
 folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-meeting.
 
@@ -65,12 +67,15 @@ them). Left Alt and Left Ctrl work as usual.
 
 Tray icon → **Open settings** opens `settings.ini` in Notepad (it lives in
 `%LOCALAPPDATA%\VoiceTyping`). Every line is explained in the file. Quit and start Voice
-Typing again after saving.
+Typing again after saving. New versions add their new settings to your file automatically.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `hotkey` | `right alt` | The hold-to-talk key |
+| `hotkey` | `right alt` | The hold-to-talk key (any single key: `right shift`, `caps lock`, `scroll lock`, `pause`, `f8`, …) |
 | `meeting_hotkey` | `right ctrl` | The tap-to-record key |
+| `meeting_hold_seconds` | `0` | Hold the meeting key this long to start or stop, so a stray tap does nothing (`0` = tap) |
+| `meeting_paste_path` | `stop` | Type the recording's file location where the cursor is: `start`, `stop`, `both`, `no` |
+| `meeting_open` | `transcript` | When done, open the `transcript`, the `folder` with the audio selected, `both`, or `no` |
 | `language` | `en` | Language spoken, or `auto` (needs the GPU model) |
 | `gpu_model` / `cpu_model` | `turbo` / `base.en` | Whisper model with / without an NVIDIA card |
 | `beeps`, `show_overlay` | `yes` | The beeps and the on-screen pill |

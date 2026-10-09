@@ -59,6 +59,9 @@ MEETING_DIR = os.path.join(os.path.expanduser("~"), "Documents", "Meeting Transc
 MEETING_SPEAKERS = 0       # 0 = work out how many speakers; or force a number (2, 3, ...)
 MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while recording
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
+MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
+MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cursor is: start, stop, both, no
+MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
 __version__ = "1.0.1"
@@ -77,9 +80,24 @@ SETTINGS_TEMPLATE = """; Voice Typing settings. Lines starting with ; are commen
 ; Restart Voice Typing after editing (tray icon > Quit, then start it again).
 
 [voice typing]
-; The hold-to-talk key for dictation, and the tap-to-record key for meetings.
+; The hold-to-talk key for dictation, and the tap-to-record key for meetings. One key each.
+; Key names you can use: right alt, right ctrl, right shift, right windows, left alt, left ctrl,
+; caps lock, scroll lock, pause, insert, menu, f1 ... f12, or a plain letter or number.
+; Whatever key you pick stops working for everything else while Voice Typing runs.
 hotkey = right alt
 meeting_hotkey = right ctrl
+
+; Hold the meeting key this many seconds to start (and to stop) a recording, so a stray tap
+; does nothing. A countdown shows while you hold. 0 = a quick tap starts and stops.
+meeting_hold_seconds = 0
+
+; Type the recording's file location where the cursor is, so your notes say where it went:
+;   start = when the recording starts, stop = when you stop it, both, or no.
+meeting_paste_path = stop
+
+; When the transcript is ready, open: transcript (in Notepad), folder (the file folder with the
+; audio selected), both, or no.
+meeting_open = transcript
 
 ; Language spoken: en, es, fr, de, ... or auto. (auto needs an NVIDIA card; the CPU model is English-only.)
 language = en
@@ -111,6 +129,34 @@ meeting_threads = 8
 """
 
 
+def add_new_settings():
+    """Append settings from the template that an older settings.ini does not have yet."""
+    try:
+        with open(SETTINGS_PATH, encoding="utf-8-sig") as f:
+            existing = f.read()
+        have = {ln.split("=", 1)[0].strip().lower() for ln in existing.splitlines()
+                if "=" in ln and not ln.lstrip().startswith(";")}
+        blocks, block = [], []
+        for ln in SETTINGS_TEMPLATE.splitlines():
+            if ln.startswith("["):
+                block = []
+                continue
+            block.append(ln)
+            if "=" in ln and not ln.lstrip().startswith(";"):
+                key = ln.split("=", 1)[0].strip().lower()
+                if key not in have:
+                    blocks.append("\n".join(block).strip("\n"))
+                block = []
+            elif not ln.strip():
+                block = []
+        if blocks:
+            with open(SETTINGS_PATH, "a", encoding="utf-8") as f:
+                f.write(("" if existing.endswith("\n") else "\n") + "\n" + "\n\n".join(blocks) + "\n")
+            log.info("settings.ini: added %d new setting(s)", len(blocks))
+    except Exception:
+        log.exception("could not update settings.ini with new settings")
+
+
 def load_settings():
     """Read settings.ini (creating it with defaults the first time) over the constants above."""
     import configparser
@@ -118,9 +164,11 @@ def load_settings():
     if not os.path.exists(SETTINGS_PATH):
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             f.write(SETTINGS_TEMPLATE)
+    else:
+        add_new_settings()
     cp = configparser.ConfigParser(interpolation=None)
     try:
-        cp.read(SETTINGS_PATH, encoding="utf-8")
+        cp.read(SETTINGS_PATH, encoding="utf-8-sig")
     except Exception:
         log.exception("settings.ini could not be read - using defaults")
         return
@@ -250,7 +298,8 @@ class VoiceTyping:
         self.device = "cpu"
         self.meeting = None                 # the running MeetingSession, if any
         self.meeting_key_down = False
-        self.hotkey_name = self.meeting_hotkey_name = None   # set in run() after settings load
+        self.hotkey_names = self.meeting_hotkey_names = set()   # set in run() after settings load
+        self.meeting_press_id = 0           # bumps on each meeting-key press (hold mode)
 
     # ---- model -------------------------------------------------------------------------
     def load_model(self):
@@ -284,13 +333,22 @@ class VoiceTyping:
         return " ".join(p.strip() for p in parts).strip()
 
     # ---- hotkey ------------------------------------------------------------------------
+    @staticmethod
+    def key_names(setting: str) -> set:
+        """Event names that mean this key. Windows calls the left modifiers plain alt / ctrl / shift."""
+        name = keyboard.normalize_name(setting.strip().lower())
+        names = {name}
+        if name.startswith("left ") and name != "left windows":
+            names.add(name[5:])
+        return names
+
     def key_hook(self, event):
         """Runs for every key event. Returns False to swallow the event (only our two keys)."""
         name = event.name
-        if name == self.hotkey_name:
+        if name in self.hotkey_names:
             (self.on_press if event.event_type == keyboard.KEY_DOWN else self.on_release)(event)
             return False
-        if name == self.meeting_hotkey_name:
+        if name in self.meeting_hotkey_names:
             (self.on_meeting_press if event.event_type == keyboard.KEY_DOWN else self.on_meeting_release)(event)
             return False
         return True
@@ -330,12 +388,46 @@ class VoiceTyping:
         if self.meeting_key_down:           # auto-repeat while held
             return
         self.meeting_key_down = True
+        if MEETING_HOLD_SECONDS <= 0:
+            self.toggle_meeting()
+            return
+        # Hold mode: count down on screen; fire only if the key is still down at the end.
+        self.meeting_press_id += 1
+        press_id = self.meeting_press_id
+        starting = self.meeting is None or self.meeting.state != "recording"
+        verb = "start" if starting else "stop"
+
+        def countdown():
+            end = time.time() + MEETING_HOLD_SECONDS
+            while True:
+                left = end - time.time()
+                if press_id != self.meeting_press_id or not self.meeting_key_down:
+                    self.ui.put(None)
+                    return
+                if left <= 0:
+                    break
+                self.ui.put((f"Keep holding to {verb} recording... {int(left) + 1}", "#8e44ad", None))
+                time.sleep(min(0.1, left))
+            self.toggle_meeting()
+
+        threading.Thread(target=countdown, daemon=True).start()
+
+    def paste_meeting_path(self, when: str):
+        if self.meeting is None or MEETING_PASTE_PATH.lower() not in (when, "both"):
+            return
+        path = self.meeting.final_path
+        log.info("pasting the recording location (%s)", when)
+        # In a thread: the hook callback must not block, and the key may still be held.
+        threading.Thread(target=lambda: (time.sleep(0.3), self.type_text(f"Meeting recording: {path} ")),
+                         daemon=True).start()
+
+    def toggle_meeting(self):
         if self.meeting is None or self.meeting.state == "done":
             try:
                 self.meeting = MeetingSession(
                     self.model, self.model_lock, self.device, MEETING_DIR, models_dir(),
                     self.ui, speakers=MEETING_SPEAKERS, chunk_seconds=MEETING_CHUNK_SECONDS,
-                    threads=MEETING_THREADS, language=LANGUAGE)
+                    threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower())
                 self.meeting.start()
             except Exception:
                 log.exception("could not start meeting recording")
@@ -344,7 +436,9 @@ class VoiceTyping:
                 return
             if BEEPS:
                 threading.Thread(target=lambda: (winsound.Beep(880, 70), winsound.Beep(1100, 90)), daemon=True).start()
+            self.paste_meeting_path("start")
         elif self.meeting.state == "recording":
+            self.paste_meeting_path("stop")
             self.meeting.stop()
             if BEEPS:
                 threading.Thread(target=lambda: (winsound.Beep(1100, 70), winsound.Beep(660, 90)), daemon=True).start()
@@ -394,8 +488,11 @@ class VoiceTyping:
     # ---- main --------------------------------------------------------------------------
     def run(self):
         load_settings()
-        self.hotkey_name = keyboard.normalize_name(HOTKEY)
-        self.meeting_hotkey_name = keyboard.normalize_name(MEETING_HOTKEY)
+        self.hotkey_names = self.key_names(HOTKEY)
+        self.meeting_hotkey_names = self.key_names(MEETING_HOTKEY)
+        if self.hotkey_names & self.meeting_hotkey_names:
+            log.warning("hotkey and meeting_hotkey are the same key (%s) - meeting mode disabled", HOTKEY)
+            self.meeting_hotkey_names = set()
         log.info("Voice Typing %s starting (%s); settings: %s", __version__, "exe" if FROZEN else "script", SETTINGS_PATH)
         root = tk.Tk()
         root.withdraw()
