@@ -69,11 +69,11 @@ MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 FILE_TRANSCRIPT_DIR = ""   # where transcripts of existing files go; "" = next to the file
 MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
-MEETING_PASTE_PATH = "stop"  # paste the recording's file location where the cursor is: start, stop, both, no
+MEETING_TYPE_LOCATION = "no"  # type the recording's file location where the cursor is: no, start, stop, both
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.2.2"
+__version__ = "1.3.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -102,9 +102,10 @@ dictation_mode = hold
 ; does nothing. A countdown shows while you hold. 0 = a quick tap starts and stops.
 meeting_hold_seconds = 0
 
-; Type the recording's file location where the cursor is, so your notes say where it went:
-;   start = when the recording starts, stop = when you stop it, both, or no.
-meeting_paste_path = stop
+; Type the recording's file location where the cursor is, for notes that should say where it
+; went: no (the transcript names it anyway), start = when the recording starts, stop = when you
+; stop it, or both.
+meeting_type_location = no
 
 ; When the transcript is ready, open: transcript (in Notepad), folder (the file folder with the
 ; audio selected), both, or no.
@@ -153,11 +154,32 @@ file_transcript_dir =
             else "~/Documents/Meeting Transcripts")
 
 
+RETIRED_SETTINGS = {"meeting_paste_path"}   # renamed meeting_type_location in 1.3.0 (default changed to no)
+
+
 def add_new_settings():
-    """Append settings from the template that an older settings.ini does not have yet."""
+    """Append settings from the template that an older settings.ini does not have yet, and drop
+    settings that no longer exist (with the comment lines directly above them)."""
     try:
         with open(SETTINGS_PATH, encoding="utf-8-sig") as f:
             existing = f.read()
+        kept, pending = [], []
+        for ln in existing.splitlines():
+            if ln.lstrip().startswith(";"):
+                pending.append(ln)
+                continue
+            if "=" in ln and ln.split("=", 1)[0].strip().lower() in RETIRED_SETTINGS:
+                pending = []                      # the retired line and its comments go
+                continue
+            kept.extend(pending); pending = []
+            kept.append(ln)
+        kept.extend(pending)
+        cleaned = "\n".join(kept).rstrip("\n") + "\n"
+        if cleaned != existing.rstrip("\n") + "\n":
+            with open(SETTINGS_PATH, "w", encoding="utf-8", newline="\n") as f:
+                f.write(cleaned)
+            existing = cleaned
+            log.info("settings.ini: removed retired setting(s)")
         have = {ln.split("=", 1)[0].strip().lower() for ln in existing.splitlines()
                 if "=" in ln and not ln.lstrip().startswith(";")}
         blocks, block = [], []
@@ -500,7 +522,7 @@ class VoiceTyping:
         threading.Thread(target=countdown, daemon=True).start()
 
     def paste_meeting_path(self, when: str):
-        if self.meeting is None or MEETING_PASTE_PATH.lower() not in (when, "both"):
+        if self.meeting is None or MEETING_TYPE_LOCATION.lower() not in (when, "both"):
             return
         path = self.meeting.final_path
         log.info("pasting the recording location (%s)", when)
@@ -630,9 +652,10 @@ class VoiceTyping:
 
         menu_items = [
             ("Transcribe a file...", lambda: self.ui.put("pick_file")),
-            ("Settings...", lambda: self.ui.put("settings")),
             ("Open transcripts folder", open_transcripts),
             ("View log", lambda: sysglue.open_path(LOG_PATH)),
+            None,
+            ("Settings...", lambda: self.ui.put("settings")),
             None,
             ("Quit Voice Typing", lambda: self.ui.put("quit")),
         ]

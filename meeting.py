@@ -345,8 +345,7 @@ class MeetingSession:
             f.write("\n")
             f.write(f"Length {_hms(length)} - {n_spk} speaker{'s' if n_spk != 1 else ''} detected"
                     + (" (labels unavailable)" if not turns else "") + "\n")
-            same_folder = os.path.dirname(self.wav_path) == os.path.dirname(self.final_path)
-            f.write(f"Audio: {os.path.basename(self.wav_path) if same_folder else self.wav_path}\n\n")
+            f.write(f"Recording: {os.path.abspath(self.wav_path)}\n\n")
             for ln in lines:
                 who = f"Speaker {order[ln['spk']]}" if ln["spk"] in order else "Unknown"
                 f.write(f"[{_hms(ln['start'])}] {who}: {''.join(ln['text']).strip()}\n\n")

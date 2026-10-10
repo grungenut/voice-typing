@@ -98,9 +98,9 @@ installer includes it; the source install downloads it once (about 75 MB) when f
 
 ## Settings
 
-Tray icon → **Settings...** opens a window with every setting. Hover the **?** beside a
-setting for what it does and its options (click the ? to keep it open). **Save and restart**
-applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
+Tray icon → **Settings...** opens a window with every setting, grouped into Dictation,
+Meetings and Files. Click the **?** in the corner, then rest the pointer on any setting to see
+what it does and its options. **Save and restart** applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
 prefer a text editor. New versions add their new settings automatically.
 
 | Setting | Default | What it does |
@@ -109,7 +109,7 @@ prefer a text editor. New versions add their new settings automatically.
 | `meeting_hotkey` | `right ctrl` | The tap-to-record key |
 | `dictation_mode` | `hold` | `hold` = hold the key while talking; `toggle` = tap to start, tap again to stop |
 | `meeting_hold_seconds` | `0` | Hold the meeting key this long to start or stop, so a stray tap does nothing (`0` = tap) |
-| `meeting_paste_path` | `stop` | Type the recording's file location where the cursor is: `start`, `stop`, `both`, `no` |
+| `meeting_type_location` | `no` | Type the recording's file location where the cursor is: `no`, `start`, `stop`, `both`. The transcript names it anyway |
 | `meeting_open` | `transcript` | When done, open the `transcript`, the `folder` with the audio selected, `both`, or `no` |
 | `language` | `en` | Language spoken, or `auto` (needs the GPU model) |
 | `gpu_model` / `cpu_model` | `turbo` / `base.en` | Whisper model with / without an NVIDIA card |
