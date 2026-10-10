@@ -326,6 +326,8 @@ class Summarizer:
             "TITLE: <at most 8 words saying what the recording was about>\n"
             "and then the text described below, with no other preamble.\n\n"
             + instructions.strip() + "\n\n" + source, max_tokens=1200)
+        # (A second "check the draft against the transcript" pass was tried on 2026-10-10 and
+        # changed nothing with the 4B model, so there is none: the template's rules do the work.)
         return self._parse(answer)
 
     def summarize_file(self, path, progress=lambda t: None, template=None):

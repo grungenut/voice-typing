@@ -117,10 +117,16 @@ recordings) or beside the Write button on the Recordings page (for any recording
 
 - **Meeting summary** - what it was about, key points, action items, written into the top of
   the transcript. The default.
-- **SOAP note** - Subjective, Objective, Assessment, Plan from a recorded clinical visit,
-  written as its own file beside the transcript, with medication names and doses, vitals and
-  dates kept exactly as spoken and "not discussed" where something was not said.
-- **Narrative** - a chronological account of the encounter in plain prose, as its own file.
+- **SOAP note** - a chiropractic SOAP note from a recorded visit: complaint and history,
+  examination findings and segmental listings by level and side, the doctor's impression, the
+  adjustments and therapies rendered and the plan. Written as its own file beside the
+  transcript, with levels, sides, pain scores, degrees and frequencies kept exactly as spoken
+  and "not discussed" where something was not said.
+- **Narrative** - the same visit as a chronological narrative in plain prose, for the chart or
+  a narrative report, as its own file.
+
+Other professions: duplicate one of these on the Note templates page and change the headings
+and instructions.
 
 Every note is a draft for the person who recorded it to review. The **Note templates** page
 edits these or makes new ones: a name, a description, where the note goes, and the
@@ -128,9 +134,7 @@ instructions to the model (the sections you want, in what order, and what to do 
 something was not said). Your templates are kept in your own folder; a built-in one you edit
 can be restored.
 
-**Recording patients or clients.** Get consent before recording, keep the transcripts folder
-on an encrypted drive (BitLocker or FileVault), and treat every note as a draft until a
-clinician has reviewed and signed it.
+Every note is a draft until the doctor has reviewed and signed it.
 
 ## Settings
 

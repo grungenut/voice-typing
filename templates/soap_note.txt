@@ -1,26 +1,26 @@
 name = SOAP note
-description = Subjective, Objective, Assessment and Plan from a recorded clinical visit. A draft for the clinician to review and sign.
+description = Chiropractic SOAP note from a recorded visit: complaint, findings, segmental listings, adjustments and plan. A draft for the doctor to review and sign.
 output = file
 instructions:
-Write a SOAP note from this transcript of a clinical visit. It is a draft: the clinician will review, correct and sign it.
+Write a chiropractic SOAP note from this transcript of a patient visit. It is a draft: the doctor will review, correct and sign it.
 
-Use exactly these headings, in this order:
+Use exactly these four headings, in this order. Under each, write only what the transcript actually contains. The lists below say what belongs under a heading when it was said; they are not a checklist to fill in, and anything on them that nobody mentioned is simply left out.
 
 Subjective:
-<the patient's own account: chief complaint, history of the present illness, relevant past history, medications, allergies, social history, and the review of systems, as stated in the visit>
+What the patient said: the complaint, its location and side; how and when it started; the quality of the pain; the 0 to 10 pain score if one was given; where it radiates; numbness, tingling or weakness; what makes it better or worse; frequency and duration; prior episodes and prior care; home care the patient has been doing; effect on work, sleep or daily activities; history, medications or allergies; and, on a return visit, how the patient said they responded to the last treatment.
 
 Objective:
-<what was observed or measured during the visit: vital signs, examination findings, test results that were read out. If none were stated, write: not documented in the recording>
+What the doctor observed, measured or tested: posture and gait; range of motion by region, with degrees or "restricted/full" as stated; palpation findings (tenderness, spasm, hypertonicity, trigger points, edema) with level and side; segmental dysfunction or subluxation findings by segment (for example C1, T4, L5, sacrum, pelvis); orthopedic and neurological tests performed and their results (straight leg raise, Kemp's, Spurling's, reflexes, strength, sensation); vitals; imaging or reports reviewed. If no examination was described at all, write: not documented in the recording.
 
 Assessment:
-<the clinician's stated impression or diagnosis, and the reasoning given. If none was stated, write: not stated in the recording>
+The doctor's stated impression or diagnosis and the regions involved; on a return visit, whether the patient is improving, unchanged or worse. A diagnosis code only if the doctor spoke one. If no assessment was stated, write: not stated in the recording.
 
 Plan:
-<what was decided: treatments, prescriptions with name, dose, route and frequency exactly as spoken, tests ordered, referrals, patient instructions, follow-up timing>
+What was done and decided: adjustments performed, with technique and the segments or regions (for example diversified at L5 and the right sacroiliac joint, activator at C2, drop table, flexion distraction); adjunctive therapies (electrical stimulation, ultrasound, heat, ice, soft tissue work, traction, taping) with region and duration; home care (stretches, exercises, ice or heat, posture and ergonomic advice, activity limits); treatment frequency and duration; when the patient will be re-examined; imaging ordered or referrals made; what the patient was told to watch for; the patient's immediate response to treatment if mentioned.
 
 Rules:
-- Use only what the transcript says. Never add findings, diagnoses, medications or numbers that were not spoken.
-- Keep names, dates, numbers, vital signs and medication details exactly as spoken. Do not round or convert units.
-- If something belongs in a section but was not discussed, write "not discussed" rather than leaving it out or guessing.
-- Write in the third person ("the patient reports"), past tense, plain clinical English, no abbreviations the clinician did not use.
-- Do not include small talk.
+- Use only what the transcript says. Never add findings, tests, segments, diagnoses, treatments or numbers that were not spoken.
+- Never write that something is absent, normal, denied, unaffected or "not mentioned" unless the patient or the doctor actually said so. If it was not discussed, leave it out.
+- Keep spinal levels, sides, pain scores, degrees, techniques, frequencies and dates exactly as spoken. Do not round or convert.
+- Write findings as statements of what was found, in the third person and past tense ("the patient reported", "the doctor found"). Do not copy the doctor's instructions to the patient during the exam (such as "lie face down") into the findings.
+- Plain clinical English; use only abbreviations the doctor used. Leave out small talk.

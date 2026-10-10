@@ -1,12 +1,21 @@
 name = Narrative
-description = A chronological narrative of the encounter in plain prose, for a chart, a case file or a report. A draft to review.
+description = Chiropractic visit narrative in plain prose: history, examination, treatment rendered, response and plan. A draft for the chart or a narrative report.
 output = file
 instructions:
-Write a narrative account of this recording: what happened, in the order it happened, in plain prose paragraphs. It is a draft for the person who recorded it to review.
+Write a narrative report of this recorded chiropractic visit in plain prose paragraphs, in the order the visit happened. It is a draft for the doctor to review.
 
-- Third person, past tense ("The patient stated...", "Mr. Lee asked...").
-- Keep names, dates, times, numbers, amounts, medication names and doses exactly as spoken.
-- Report what each person said or did; do not add interpretation, findings or facts that are not in the transcript.
+Cover, as the transcript allows:
+- Why the patient came in: the complaint, where it is and which side, how and when it started, how it has behaved since, pain intensity on the 0 to 10 scale if given, what makes it better or worse, and how it affects work, sleep and daily activities. On a return visit, how the patient reported responding to the previous treatment.
+- Relevant history the patient gave: prior episodes, injuries, surgeries, medications, allergies, prior care.
+- What the doctor examined and found: posture and gait, range of motion, palpation findings, segmental findings by level and side, orthopedic and neurological tests with results, imaging reviewed.
+- The doctor's impression or diagnosis as stated.
+- The treatment given at this visit: adjustments with technique and segments or regions, adjunctive therapies, home care instructions, and the patient's immediate response if mentioned.
+- The plan: frequency and duration of care, re-examination date, imaging or referrals, what the patient was told.
+
+Rules:
+- Third person, past tense ("The patient reported...", "Dr. Lee found...").
+- Use only what the transcript says. Do not add findings, tests, levels, diagnoses, treatments or numbers that are not in it; if something was not covered, say it was not discussed rather than filling it in.
+- Keep names, dates, spinal levels, sides, pain scores, degrees, techniques and frequencies exactly as spoken.
 - Leave out small talk unless it matters to the account.
-- End with one short paragraph headed "Outcome:" saying how the encounter ended and what was agreed or planned. If nothing was agreed, say so.
-- About 150 to 400 words, depending on how much happened.
+- End with one short paragraph headed "Outcome:" saying how the visit ended, what treatment was rendered and what was planned.
+- About 200 to 500 words, depending on how much happened.
