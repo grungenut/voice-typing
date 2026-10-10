@@ -104,8 +104,11 @@ installer includes it; the source install downloads it once (about 75 MB) when f
 
 ## Summaries (optional, on your computer)
 
-The Summaries page of the window can download a small language model (Qwen3 4B, Apache 2.0,
-about 2.5 GB with the llama.cpp program that runs it). From then on each new meeting or
+The Summaries page of the window can download a language model (Qwen3, Apache 2.0, run by
+the llama.cpp program). Three sizes: **4B** (2.5 GB, fine for most PCs), **8B** (5 GB, better
+notes, needs 12 GB of memory) and **14B** (9 GB, the best notes, needs 16 GB of memory and is
+three to four times slower without a graphics card). The page shows how much memory the
+computer has. From then on each new meeting or
 transcribed file gets a title and a summary written into the top of its transcript: what it
 was about, the key points, and any action items. Older recordings can be summarized from the
 Recordings page. Everything runs on your computer; the transcript is never sent anywhere.
@@ -162,6 +165,7 @@ prefer a text editor. New versions add their new settings automatically.
 | `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
 | `meeting_threads` | `8` | CPU threads for speaker labeling |
 | `summaries` | `no` | Title and summary for each new transcript, by the local summary model (window → Summaries) |
+| `summary_model` | `4b` | Which summary model size to use: `4b`, `8b` or `14b` (window → Summaries) |
 | `summary_template` | `Meeting summary` | Which note template the summary step uses: `Meeting summary`, `SOAP note`, `Narrative`, or your own |
 | `file_transcript_dir` | blank | Where transcripts of existing files go; blank = next to the file |
 

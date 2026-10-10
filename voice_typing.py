@@ -72,12 +72,13 @@ MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 FILE_TRANSCRIPT_DIR = ""   # where transcripts of existing files go; "" = next to the file
 SUMMARIES = False          # title + summary for each new transcript, by the local summary model
 SUMMARY_TEMPLATE = "Meeting summary"   # which note template the summary step uses (window > Note templates)
+SUMMARY_MODEL = "4b"       # which model size the summary step uses: 4b, 8b or 14b (window > Summaries)
 MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
 MEETING_TYPE_LOCATION = "no"  # type the recording's file location where the cursor is: no, start, stop, both
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.5.1"
+__version__ = "1.6.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -161,6 +162,10 @@ summaries = no
 ; Which note template the summary step uses: Meeting summary, SOAP note, Narrative, or one
 ; you made on the window's Note templates page.
 summary_template = Meeting summary
+
+; Which summary model size to use: 4b (standard, 2.5 GB), 8b (better, 5 GB, needs 12 GB of
+; memory) or 14b (best, 9 GB, needs 16 GB of memory). Downloaded from the Summaries page.
+summary_model = 4b
 """.replace("@KEY_NAMES@", sysglue.KEY_NAME_HELP).replace("@HOTKEY@", sysglue.DEFAULT_HOTKEY) \
    .replace("@MEETING_HOTKEY@", sysglue.DEFAULT_MEETING_HOTKEY) \
    .replace("@MEETING_DIR@", "%USERPROFILE%\\Documents\\Meeting Transcripts" if sysglue.IS_WIN
@@ -614,12 +619,12 @@ class VoiceTyping:
     # ---- summaries and the window ------------------------------------------------------
     def post_transcript(self, path):
         """Runs in the meeting / file thread once a transcript is written, before it is opened."""
-        if SUMMARIES and summarize.status()["ready"]:
+        if SUMMARIES and summarize.status(SUMMARY_MODEL)["ready"]:
             self.summarize_now(path)
 
     def summarize_now(self, path, template_name=None):
-        if self.summarizer is None:
-            self.summarizer = summarize.Summarizer(threads=MEETING_THREADS)
+        if self.summarizer is None or self.summarizer.model_id != SUMMARY_MODEL.lower().strip():
+            self.summarizer = summarize.Summarizer(threads=MEETING_THREADS, model_id=SUMMARY_MODEL)
         name = os.path.basename(path)
         tpl = templates.get(template_name or SUMMARY_TEMPLATE, BUNDLE_DIR, APP_DIR)
 
@@ -670,6 +675,10 @@ class VoiceTyping:
         return SUMMARY_TEMPLATE
 
     @staticmethod
+    def summary_model():
+        return SUMMARY_MODEL
+
+    @staticmethod
     def templates():
         return templates.load_all(BUNDLE_DIR, APP_DIR)
 
@@ -678,11 +687,13 @@ class VoiceTyping:
 
     def set_setting(self, key, value):
         """Save one setting right away (no restart) and apply it to the running copy."""
-        global SUMMARIES, SUMMARY_TEMPLATE
+        global SUMMARIES, SUMMARY_TEMPLATE, SUMMARY_MODEL
         if key == "summaries":
             SUMMARIES = bool(value)
         elif key == "summary_template":
             SUMMARY_TEMPLATE = str(value)
+        elif key == "summary_model":
+            SUMMARY_MODEL = str(value)
         try:
             from settings_window import read_values, write_values
             values = read_values(SETTINGS_PATH)

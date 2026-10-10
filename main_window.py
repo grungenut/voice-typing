@@ -392,7 +392,7 @@ class MainWindow:
             self.enable(self.b_open)
             self.enable(self.b_play, bool(info["recording"]) and os.path.exists(info["recording"]))
             self.enable(self.b_folder)
-            ready = summarize.status()["ready"]
+            ready = summarize.status(self.app.summary_model())["ready"]
             self.enable(self.b_sum, ready)
             self.sum_hint.config(text="" if ready else "Download the summary model on the Summaries page")
             for note in transcripts.notes_for(info["path"]):
@@ -489,18 +489,31 @@ class MainWindow:
         outer.pack(fill="x")
         inner = tk.Frame(card, bg=CARD, padx=14, pady=10)
         inner.pack(fill="x")
+        mrow = tk.Frame(inner, bg=CARD)
+        mrow.pack(fill="x")
+        tk.Label(mrow, text="Model", font=(FONT, 10), fg=TEXT, bg=CARD).pack(side="left")
+        self.model_labels = {k: v["label"] for k, v in summarize.MODELS.items()}
+        self.model_var = tk.StringVar(value=self.model_labels.get(self.app.summary_model(), self.model_labels["4b"]))
+        self.model_box = ttk.Combobox(mrow, textvariable=self.model_var, width=24, style="Set.TCombobox", font=(FONT, 10),
+                                      state="readonly", values=list(self.model_labels.values()))
+        self.model_box.pack(side="left", padx=12)
+        self.model_box.bind("<<ComboboxSelected>>", lambda e: self.model_chosen())
+        ram = sysglue.total_ram_gb()
+        tk.Label(mrow, text=f"This computer has {ram:.0f} GB of memory" if ram else "", font=(FONT, 9), fg=MUTED, bg=CARD).pack(side="left")
+        self.model_note = tk.Label(inner, text="", font=(FONT, 9), fg=MUTED, bg=CARD, anchor="w", justify="left", wraplength=600)
+        self.model_note.pack(anchor="w", pady=(2, 6))
         self.sum_status = tk.Label(inner, text="", font=(FONT, 10), fg=TEXT, bg=CARD, anchor="w", justify="left")
         self.sum_status.pack(anchor="w")
-        tk.Label(inner, text=f"Model: {summarize.MODEL_LABEL}  ·  runs with llama.cpp (MIT)  ·  {summarize.total_download_bytes() / 1e9:.1f} GB on disk",
+        tk.Label(inner, text="All sizes are Qwen3 (Apache 2.0), run with llama.cpp (MIT). Several can be installed; the chosen one is used.",
                  font=(FONT, 9), fg=MUTED, bg=CARD).pack(anchor="w", pady=(2, 8))
         self.progress = ttk.Progressbar(inner, style="App.Horizontal.TProgressbar", length=560, mode="determinate", maximum=1000)
         self.progress_label = tk.Label(inner, text="", font=(FONT, 9), fg=MUTED, bg=CARD, anchor="w")
         brow = tk.Frame(inner, bg=CARD)
         brow.pack(fill="x", pady=(4, 0))
-        self.b_download = self.button(brow, "Download the summary model", self.start_download, primary=True)
+        self.b_download = self.button(brow, "Download this model", self.start_download, primary=True)
         self.b_download.pack(side="left")
         self.b_cancel = self.button(brow, "Cancel", self.cancel_download)
-        self.b_remove = self.link(brow, "Remove the model from this computer", self.remove_model)
+        self.b_remove = self.link(brow, "Remove this model from the computer", self.remove_model)
 
         souter, scard = self.card(page)
         souter.pack(fill="x", pady=(14, 0))
@@ -535,6 +548,18 @@ class MainWindow:
         t = next((t for t in self.app.templates() if t["name"] == name), None)
         self.default_style_note.config(text=(t["description"] if t else ""))
 
+    def selected_model(self):
+        label = self.model_var.get()
+        return next((k for k, v in self.model_labels.items() if v == label), "4b")
+
+    def model_chosen(self):
+        # A size that is not downloaded yet becomes the one in use only once its download finishes.
+        if summarize.status(self.selected_model())["ready"]:
+            self.app.set_setting("summary_model", self.selected_model())
+        self.refresh_summaries()
+        if self.current == "recordings":
+            self.show_detail()
+
     def refresh_summaries(self):
         names = [t["name"] for t in self.app.templates()]
         self.default_style_box["values"] = names
@@ -543,14 +568,21 @@ class MainWindow:
         elif names:
             self.default_style_var.set(names[0])
         self._style_note()
-        st = summarize.status()
+        mid = self.selected_model()
+        info = summarize.model_info(mid)
+        ram = sysglue.total_ram_gb()
+        warn = f"  This computer's {ram:.0f} GB may not be enough." if ram and ram < info["ram"] + 3 else ""
+        self.model_note.config(text=info["note"] + warn, fg="#c0392b" if warn else MUTED)
+        st = summarize.status(mid)
+        others = [self.model_labels[k].split(" - ")[0] for k in st["installed"] if k != mid]
+        extra = f"  Also installed: {', '.join(others)}." if others else ""
         if st["ready"]:
-            self.sum_status.config(text="Installed and ready.", fg=GREEN)
+            self.sum_status.config(text="Installed and ready." + extra, fg=GREEN)
             self.b_download.pack_forget()
             self.b_remove.pack(side="left")
         else:
             part = st["partial_bytes"] or st["model_bytes"]
-            self.sum_status.config(text="Not installed." + (f"  A partial download ({part / 1e9:.2f} GB) will be resumed." if part else ""), fg=TEXT)
+            self.sum_status.config(text="Not installed." + (f"  A partial download ({part / 1e9:.2f} GB) will be resumed." if part else "") + extra, fg=TEXT)
             self.b_remove.pack_forget()
             if self.download_cancel is None:
                 self.b_download.pack(side="left")
@@ -569,9 +601,11 @@ class MainWindow:
         def progress(label, fraction):
             self.post(self._download_progress, label, fraction)
 
+        model_id = self.selected_model()
+
         def work():
             try:
-                summarize.download(progress, self.download_cancel)
+                summarize.download(progress, self.download_cancel, model_id)
                 self.post(self._download_done, None)
             except summarize.Canceled:
                 self.post(self._download_done, "canceled")
@@ -594,14 +628,16 @@ class MainWindow:
             messagebox.showerror("Voice Typing", error, parent=self.win)
         if self.current == "recordings":
             self.show_detail()
+        if not error and self.selected_model() != self.app.summary_model():
+            self.app.set_setting("summary_model", self.selected_model())
 
     def cancel_download(self):
         if self.download_cancel is not None:
             self.download_cancel.set()
 
     def remove_model(self):
-        if messagebox.askyesno("Voice Typing", "Remove the summary model and its runtime from this computer?", parent=self.win):
-            summarize.remove()
+        if messagebox.askyesno("Voice Typing", f"Remove {summarize.model_info(self.selected_model())['label']} from this computer?", parent=self.win):
+            summarize.remove(self.selected_model())
             self.refresh_summaries()
 
     # ---- Note templates page ---------------------------------------------------------------

@@ -41,10 +41,20 @@ LLAMA_URLS = {
     "mac-arm64": f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_BUILD}/llama-{LLAMA_BUILD}-bin-macos-arm64.tar.gz",
     "mac-x64": f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_BUILD}/llama-{LLAMA_BUILD}-bin-macos-x64.tar.gz",
 }
-MODEL_NAME = "Qwen3-4B-Q4_K_M.gguf"
-MODEL_LABEL = "Qwen3 4B (Apache 2.0)"
-MODEL_URL = f"https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/{MODEL_NAME}"
-MODEL_BYTES = 2_497_280_256
+# The model sizes on offer. All Qwen3 (Apache 2.0), Q4_K_M quantization, from Qwen's own
+# Hugging Face repos. "ram" is roughly what the computer needs free while a summary runs.
+MODELS = {
+    "4b": {"label": "Qwen3 4B - standard", "file": "Qwen3-4B-Q4_K_M.gguf", "bytes": 2_497_280_256, "ram": 4.0,
+           "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+           "note": "2.5 GB download. Fine for most PCs; a 5-minute visit in about half a minute."},
+    "8b": {"label": "Qwen3 8B - better", "file": "Qwen3-8B-Q4_K_M.gguf", "bytes": 5_027_783_488, "ram": 7.0,
+           "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+           "note": "5 GB download. Noticeably more careful notes; about twice as slow. Needs 12 GB of memory or more."},
+    "14b": {"label": "Qwen3 14B - best", "file": "Qwen3-14B-Q4_K_M.gguf", "bytes": 9_001_752_960, "ram": 11.0,
+            "url": "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf",
+            "note": "9 GB download. The best notes; three to four times slower than standard. Needs 16 GB of memory or more."},
+}
+DEFAULT_MODEL = "4b"
 RUNTIME_BYTES = 19_518_702 if sysglue.IS_WIN else 12_100_000
 
 CONTEXT = 6144                 # tokens the model sees at once; keeps memory near 1 GB on top of the model
@@ -72,8 +82,12 @@ def model_dir():
     return os.path.join(sysglue.data_dir(), "summary")
 
 
-def model_path():
-    return os.path.join(model_dir(), MODEL_NAME)
+def model_info(model_id=None):
+    return MODELS.get((model_id or DEFAULT_MODEL).lower().strip(), MODELS[DEFAULT_MODEL])
+
+
+def model_path(model_id=None):
+    return os.path.join(model_dir(), model_info(model_id)["file"])
 
 
 def server_path():
@@ -86,21 +100,28 @@ def _runtime_key():
     return "mac-arm64" if platform.machine() == "arm64" else "mac-x64"
 
 
-def status():
-    """{'ready': bool, 'runtime': bool, 'model': bool, 'model_bytes': int, 'partial_bytes': int}"""
-    part = model_path() + ".part"
+def status(model_id=None):
+    """{'ready': bool, 'runtime': bool, 'model': bool, 'model_bytes': int, 'partial_bytes': int,
+    'installed': [model ids present]} for the chosen model size."""
+    info = model_info(model_id)
+    path = model_path(model_id)
+    part = path + ".part"
+    have = os.path.exists(path) and os.path.getsize(path) == info["bytes"]
+    installed = [k for k, v in MODELS.items()
+                 if os.path.exists(os.path.join(model_dir(), v["file"]))
+                 and os.path.getsize(os.path.join(model_dir(), v["file"])) == v["bytes"]]
     return {
         "runtime": os.path.exists(server_path()),
-        "model": os.path.exists(model_path()) and os.path.getsize(model_path()) == MODEL_BYTES,
-        "model_bytes": os.path.getsize(model_path()) if os.path.exists(model_path()) else 0,
+        "model": have,
+        "model_bytes": os.path.getsize(path) if os.path.exists(path) else 0,
         "partial_bytes": os.path.getsize(part) if os.path.exists(part) else 0,
-        "ready": os.path.exists(server_path()) and os.path.exists(model_path())
-                 and os.path.getsize(model_path()) == MODEL_BYTES,
+        "ready": os.path.exists(server_path()) and have,
+        "installed": installed,
     }
 
 
-def total_download_bytes():
-    return MODEL_BYTES + RUNTIME_BYTES
+def total_download_bytes(model_id=None):
+    return model_info(model_id)["bytes"] + (0 if os.path.exists(server_path()) else RUNTIME_BYTES)
 
 
 # ---- download ----------------------------------------------------------------------------
@@ -163,10 +184,11 @@ def _install_runtime(archive):
     log.info("summary runtime installed (%d files) in %s", kept, runtime_dir())
 
 
-def download(progress, cancel=None):
-    """Fetch the runtime (if missing) and the model (resumes a partial download).
+def download(progress, cancel=None, model_id=None):
+    """Fetch the runtime (if missing) and the chosen model (resumes a partial download).
     progress(label, fraction_0_to_1). Raises Canceled when the cancel event is set."""
-    total = total_download_bytes()
+    info = model_info(model_id)
+    total = info["bytes"] + RUNTIME_BYTES
     done = 0
     if not os.path.exists(server_path()):
         os.makedirs(runtime_dir(), exist_ok=True)
@@ -178,22 +200,29 @@ def download(progress, cancel=None):
         _install_runtime(archive)
         os.remove(archive)
     done += RUNTIME_BYTES
-    if not status()["model"]:
+    if not status(model_id)["model"]:
         os.makedirs(model_dir(), exist_ok=True)
-        _fetch(MODEL_URL, model_path(),
-               lambda got, _: progress(f"Downloading the summary model ({got / 1e9:.2f} of {total / 1e9:.1f} GB)...", got / total),
+        _fetch(info["url"], model_path(model_id),
+               lambda got, _: progress(f"Downloading {info['label']} ({got / 1e9:.2f} of {total / 1e9:.1f} GB)...", got / total),
                cancel, done, total, resume=True)
-        if os.path.getsize(model_path()) != MODEL_BYTES:
-            os.remove(model_path())
+        if os.path.getsize(model_path(model_id)) != info["bytes"]:
+            os.remove(model_path(model_id))
             raise RuntimeError("the model file came down incomplete - please try again")
     progress("Ready", 1.0)
-    log.info("summary model ready: %s", model_path())
+    log.info("summary model ready: %s", model_path(model_id))
 
 
-def remove():
-    for d in (runtime_dir(), model_dir()):
-        shutil.rmtree(d, ignore_errors=True)
-    log.info("summary model and runtime removed")
+def remove(model_id=None):
+    """Remove one model size (and the runtime too once no model is left)."""
+    for suffix in ("", ".part"):
+        try:
+            os.remove(model_path(model_id) + suffix)
+        except OSError:
+            pass
+    if not status(model_id)["installed"]:
+        for d in (runtime_dir(), model_dir()):
+            shutil.rmtree(d, ignore_errors=True)
+    log.info("summary model %s removed", model_info(model_id)["label"])
 
 
 # ---- running the model -------------------------------------------------------------------
@@ -208,8 +237,9 @@ def _free_port():
 class Summarizer:
     """Starts llama-server when needed, talks to it over HTTP on localhost, stops it afterwards."""
 
-    def __init__(self, threads=None):
+    def __init__(self, threads=None, model_id=None):
         self.threads = threads
+        self.model_id = (model_id or DEFAULT_MODEL).lower().strip()
         self.proc = None
         self.port = None
         self.lock = threading.Lock()
@@ -218,10 +248,10 @@ class Summarizer:
     def start(self):
         if self.proc is not None and self.proc.poll() is None:
             return
-        if not status()["ready"]:
-            raise RuntimeError("the summary model is not installed")
+        if not status(self.model_id)["ready"]:
+            raise RuntimeError(f"the summary model ({model_info(self.model_id)['label']}) is not installed")
         self.port = _free_port()
-        args = [server_path(), "-m", model_path(), "-c", str(CONTEXT), "--host", "127.0.0.1",
+        args = [server_path(), "-m", model_path(self.model_id), "-c", str(CONTEXT), "--host", "127.0.0.1",
                 "--port", str(self.port), "-np", "1", "--no-webui", "--log-disable",
                 "--chat-template-kwargs", '{"enable_thinking": false}']
         if self.threads:
@@ -229,7 +259,7 @@ class Summarizer:
         kw = {}
         if sysglue.IS_WIN:
             kw["creationflags"] = 0x08000000        # CREATE_NO_WINDOW
-        log.info("starting llama-server on port %d", self.port)
+        log.info("starting llama-server (%s) on port %d", model_info(self.model_id)["label"], self.port)
         self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
         deadline = time.time() + 180
         while time.time() < deadline:
