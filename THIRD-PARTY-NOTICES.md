@@ -10,6 +10,8 @@ Voice Typing itself is MIT-licensed (see LICENSE). It is built from the open-sou
 | pyannote segmentation-3.0 (speaker segmentation model) | CNRS / Hervé Bredin | MIT | https://huggingface.co/pyannote/segmentation-3.0 (ONNX export from https://github.com/k2-fsa/sherpa-onnx) |
 | 3D-Speaker ERes2Net VoxCeleb (speaker embedding model) | Alibaba DAMO Academy, 3D-Speaker project | Apache-2.0 | https://github.com/modelscope/3D-Speaker (ONNX export from https://github.com/k2-fsa/sherpa-onnx) |
 | FFmpeg (audio/video decoding for 'Transcribe a file') | FFmpeg developers | LGPL-2.1-or-later (LGPL build, no GPL components) | https://ffmpeg.org - build from https://github.com/BtbN/FFmpeg-Builds |
+| llama.cpp (runs the summary model) | Georgi Gerganov and the llama.cpp contributors | MIT | https://github.com/ggml-org/llama.cpp |
+| Qwen3-4B (summary language model, GGUF Q4_K_M) | Alibaba Cloud, Qwen team | Apache-2.0 | https://huggingface.co/Qwen/Qwen3-4B-GGUF |
 | ONNX Runtime | Microsoft | MIT | https://github.com/microsoft/onnxruntime |
 | PortAudio | PortAudio community | MIT | http://www.portaudio.com |
 | Python | Python Software Foundation | PSF-2.0 | https://www.python.org |
@@ -20,6 +22,8 @@ Voice Typing itself is MIT-licensed (see LICENSE). It is built from the open-sou
 - **pyannote segmentation-3.0 (speaker segmentation model)** - Bundled as models\pyannote-segmentation-3-0.onnx.
 - **3D-Speaker ERes2Net VoxCeleb (speaker embedding model)** - Bundled as models\3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx.
 - **FFmpeg (audio/video decoding for 'Transcribe a file')** - Bundled as ffmpeg\ffmpeg.exe and its DLLs, run as a separate program; the source install downloads the same build on first use. Source code for this build: https://github.com/BtbN/FFmpeg-Builds (the LGPL license text is below).
+- **llama.cpp (runs the summary model)** - Not bundled: downloaded on request from the window's Summaries page (release b11541, llama-server and its libraries) into %LOCALAPPDATA%\VoiceTyping\llama and run as a separate program.
+- **Qwen3-4B (summary language model, GGUF Q4_K_M)** - Not bundled: downloaded on request from the window's Summaries page into %LOCALAPPDATA%\VoiceTyping\summary.
 - **ONNX Runtime** - Bundled inside sherpa-onnx as onnxruntime.dll.
 - **PortAudio** - Bundled inside python-sounddevice as libportaudio64bit.dll.
 - **Python** - The interpreter and standard library are embedded in the exe.

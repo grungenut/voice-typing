@@ -6,7 +6,7 @@ so nothing with a copyleft license is pulled into the exe.
     tray.start()      # runs its own message loop on a background thread
     tray.stop()       # removes the icon and ends that thread
 
-Left- or right-click the icon to get the menu. Callbacks run on the tray thread, so they
+Left-click opens the window (on_open); right-click shows the menu. Callbacks run on the tray thread, so they
 should only do thread-safe things (open a file, put a message on a queue).
 """
 
@@ -67,8 +67,9 @@ class NOTIFYICONDATAW(ctypes.Structure):
 
 
 class Tray:
-    def __init__(self, tooltip, icon_path, items):
+    def __init__(self, tooltip, icon_path, items, on_open=None):
         self.tooltip, self.icon_path, self.items = tooltip[:127], icon_path, items
+        self.on_open = on_open                      # left click; the menu stays on right click
         self.hwnd = None
         self._thread = None
         self._ready = threading.Event()
@@ -162,7 +163,13 @@ class Tray:
 
     def _on_message(self, hwnd, msg, wparam, lparam):
         if msg == WM_TRAY and (lparam & 0xFFFF) in (WM_LBUTTONUP, WM_RBUTTONUP, WM_CONTEXTMENU):
-            self._show_menu()
+            if (lparam & 0xFFFF) == WM_LBUTTONUP and self.on_open:
+                try:
+                    self.on_open()
+                except Exception:
+                    log.exception("tray open action failed")
+            else:
+                self._show_menu()
             return 0
         if msg == WM_TIMER and wparam == RETRY_TIMER_ID:
             if not self._added:

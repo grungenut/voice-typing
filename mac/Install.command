@@ -114,8 +114,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleName</key>              <string>Voice Typing</string>
     <key>CFBundleDisplayName</key>       <string>Voice Typing</string>
     <key>CFBundleIdentifier</key>        <string>com.jamesbeadle.voicetyping</string>
-    <key>CFBundleVersion</key>           <string>1.3.0</string>
-    <key>CFBundleShortVersionString</key><string>1.3.0</string>
+    <key>CFBundleVersion</key>           <string>1.4.0</string>
+    <key>CFBundleShortVersionString</key><string>1.4.0</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleExecutable</key>        <string>Voice Typing</string>
     <key>CFBundleIconFile</key>          <string>voice_typing</string>
@@ -145,7 +145,8 @@ cat <<EOF
      - Accessibility: System Settings > Privacy & Security > Accessibility - switch on
        "Voice Typing" (it may be listed as "Python"). Needed to see the hotkeys and to paste.
    Then: hold RIGHT OPTION and talk; tap RIGHT COMMAND to record a meeting.
-   Settings: click the small "Voice Typing" pill at the bottom right of the screen.
+   Click the small "Voice Typing" pill at the bottom right of the screen for the window
+   (recordings, transcribing files, summaries, settings).
 
 EOF
 open "$APP"

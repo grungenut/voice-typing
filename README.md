@@ -75,11 +75,17 @@ hold the key? Set *Dictation key works as* to **toggle** in Settings: tap to sta
 
 **Record a meeting:** tap Right Ctrl (rising two-tone beep; purple "Recording 00:00" pill with
 a running clock). Tap it again to stop (falling beep). The transcript is written to
-`Documents\Meeting Transcripts\` and opens in Notepad when ready. When you stop, the file's
-location is typed where your cursor is, so your notes say where the recording went (see
-settings to change or turn that off). Labeling speakers takes
-about two to three minutes per hour of audio. While recording, a `.live.txt` file in the same
-folder is updated every 30 seconds, so nothing is lost if the PC crashes mid-meeting.
+`Documents\Meeting Transcripts\` and opens in Notepad when ready; its header names the
+recording's location. Labeling speakers takes about two to three minutes per hour of audio.
+While recording, a `.live.txt` file in the same folder is updated every 30 seconds, so nothing
+is lost if the PC crashes mid-meeting.
+
+**The window:** click the tray icon (on a Mac, the small "Voice Typing" pill) to open it.
+**Recordings** lists every meeting with its date, length, speakers and summary, with search
+across titles, summaries and the words spoken; open the transcript, play the recording, show
+it in its folder, or summarize it. **Transcribe a file** turns an existing recording or video
+into a transcript. **Summaries** installs the optional local summary model. The settings and
+About pages are there too. Closing the window leaves Voice Typing running in the tray.
 
 Right Alt and Right Ctrl are reserved for Voice Typing while it runs (programs never see
 them). Left Alt and Left Ctrl work as usual. On a Mac the keys are Right Option and Right Command.
@@ -96,11 +102,21 @@ them and exits.
 Anything other than WAV is decoded by [FFmpeg](https://ffmpeg.org) (LGPL build). The
 installer includes it; the source install downloads it once (about 75 MB) when first needed.
 
+## Summaries (optional, on your computer)
+
+The Summaries page of the window can download a small language model (Qwen3 4B, Apache 2.0,
+about 2.5 GB with the llama.cpp program that runs it). From then on each new meeting or
+transcribed file gets a title and a summary written into the top of its transcript: what it
+was about, the key points, and any action items. Older recordings can be summarized from the
+Recordings page. Everything runs on your computer; the transcript is never sent anywhere.
+Expect a minute or a few per meeting on a computer without an NVIDIA card. The installer
+offers the download as an option; it can also be removed from the Summaries page.
+
 ## Settings
 
-Tray icon → **Settings...** opens a window with every setting, grouped into Dictation,
-Meetings and Files. Click the **?** in the corner, then rest the pointer on any setting to see
-what it does and its options. **Save and restart** applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
+Tray icon → **Settings...** (or the window's sidebar) shows every setting, grouped into
+Dictation, Meetings and Files. Click the **?** in the corner, then rest the pointer on any
+setting to see what it does and its options. **Save and restart** applies them. The same settings live in `settings.ini` in `%LOCALAPPDATA%\VoiceTyping` if you
 prefer a text editor. New versions add their new settings automatically.
 
 | Setting | Default | What it does |
@@ -121,6 +137,7 @@ prefer a text editor. New versions add their new settings automatically.
 | `meeting_speakers` | `0` | `0` = detect the number of speakers, or force it (`2`, `3`, …) |
 | `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
 | `meeting_threads` | `8` | CPU threads for speaker labeling |
+| `summaries` | `no` | Title and summary for each new transcript, by the local summary model (window → Summaries) |
 | `file_transcript_dir` | blank | Where transcripts of existing files go; blank = next to the file |
 
 ## Recording other people
@@ -146,10 +163,12 @@ participants are. Voice Typing does not announce itself to the other side of a c
 
 ## Privacy
 
-Audio is processed by models running on your PC and is never uploaded. Meeting recordings
-and transcripts are ordinary files in your Documents folder; delete them whenever you like.
-Setup downloads the speech model from OpenAI's public servers once; the source install also
-downloads libraries from PyPI and the speaker models from GitHub.
+Audio and transcripts are processed by models running on your PC and are never uploaded -
+that includes the optional summaries. Meeting recordings and transcripts are ordinary files in
+your Documents folder; delete them whenever you like. Setup downloads the speech model from
+OpenAI's public servers once; the source install also downloads libraries from PyPI and the
+speaker models from GitHub. The summary model (Hugging Face) and llama.cpp (GitHub) are
+downloaded only if you ask for them on the Summaries page.
 
 ## Building the installer yourself
 

@@ -172,9 +172,10 @@ class FileTranscription(MeetingSession):
     """Reuses MeetingSession's chunk transcription, speaker labeling and transcript writer."""
 
     def __init__(self, source, model, model_lock, device, models_dir, ui, ffmpeg, out_dir=None,
-                 speakers=0, threads=8, language="en", open_mode="transcript"):
+                 speakers=0, threads=8, language="en", open_mode="transcript", post=None):
         # MeetingSession.__init__ is deliberately not called: it sets up live capture.
         self.model, self.model_lock, self.device = model, model_lock, device
+        self.post = post
         self.models_dir, self.ui, self.ffmpeg = models_dir, ui, ffmpeg
         self.speakers, self.threads, self.language, self.open_mode = speakers, threads, language, open_mode
         self.source = os.path.abspath(source)
@@ -227,6 +228,7 @@ class FileTranscription(MeetingSession):
                 pass
             log.info("transcript -> %s (%.0fs for %s of audio)", self.final_path, time.time() - t0, _hms(length))
             self.ui.put(("Transcript saved", "#27ae60", 3000))
+            self._post()
             try:
                 if self.open_mode in ("transcript", "both"):
                     sysglue.open_path(self.final_path)

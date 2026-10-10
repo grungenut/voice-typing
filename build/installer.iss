@@ -40,6 +40,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "startup"; Description: "Start {#AppName} when I sign in to Windows"; GroupDescription: "Options:"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Options:"; Flags: unchecked
+Name: "summarymodel"; Description: "Download the summary model after installing (2.5 GB) - writes a title and summary for each recording, on this computer"; GroupDescription: "Options:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -50,7 +51,6 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; Comment: "Hold Right Alt to dictate, tap Right Ctrl to record a meeting"
-Name: "{group}\{#AppName} settings"; Filename: "notepad.exe"; Parameters: """{localappdata}\VoiceTyping\settings.ini"""; Comment: "Edit the settings file"
 Name: "{group}\Third-party notices"; Filename: "{app}\THIRD-PARTY-NOTICES.md"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
@@ -60,7 +60,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "{#AppName}"; Flags: deletevalue; Tasks: not startup
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Parameters: "--summaries"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent; Tasks: summarymodel
+Filename: "{app}\{#AppExe}"; Description: "Start {#AppName} now"; Flags: nowait postinstall skipifsilent; Tasks: not summarymodel
 
 [UninstallRun]
 Filename: "taskkill.exe"; Parameters: "/F /IM ""{#AppExe}"""; Flags: runhidden; RunOnceId: "KillApp"

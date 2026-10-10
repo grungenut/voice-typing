@@ -41,7 +41,8 @@ import sounddevice as sd
 import sysglue
 from meeting import MeetingSession
 from transcribe_file import MEDIA_TYPES, FileTranscription, ensure_ffmpeg
-from settings_window import SettingsWindow
+import summarize
+from main_window import MainWindow
 if sysglue.IS_WIN:
     from tray import Tray
 
@@ -68,12 +69,13 @@ MEETING_SPEAKERS = 0       # 0 = work out how many speakers; or force a number (
 MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while recording
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 FILE_TRANSCRIPT_DIR = ""   # where transcripts of existing files go; "" = next to the file
+SUMMARIES = False          # title + summary for each new transcript, by the local summary model
 MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
 MEETING_TYPE_LOCATION = "no"  # type the recording's file location where the cursor is: no, start, stop, both
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -145,15 +147,21 @@ meeting_chunk_seconds = 30
 ; CPU threads used for speaker labeling at the end of a meeting.
 meeting_threads = 8
 
-; Where transcripts of existing recordings (tray icon > Transcribe a file) go.
+; Where transcripts of existing recordings (Voice Typing window > Transcribe a file) go.
 ; Leave blank to put each transcript next to its file.
 file_transcript_dir =
+
+; After each meeting (and each transcribed file), a small language model on this computer
+; writes a title and summary into the transcript. Needs the summary model, downloaded from the
+; window's Summaries page. yes or no.
+summaries = no
 """.replace("@KEY_NAMES@", sysglue.KEY_NAME_HELP).replace("@HOTKEY@", sysglue.DEFAULT_HOTKEY) \
    .replace("@MEETING_HOTKEY@", sysglue.DEFAULT_MEETING_HOTKEY) \
    .replace("@MEETING_DIR@", "%USERPROFILE%\\Documents\\Meeting Transcripts" if sysglue.IS_WIN
             else "~/Documents/Meeting Transcripts")
 
 
+FIRST_RUN = False                           # settings.ini was created by this start: show the window
 RETIRED_SETTINGS = {"meeting_paste_path"}   # renamed meeting_type_location in 1.3.0 (default changed to no)
 
 
@@ -207,9 +215,11 @@ def load_settings():
     """Read settings.ini (creating it with defaults the first time) over the constants above."""
     import configparser
 
+    global FIRST_RUN
     if not os.path.exists(SETTINGS_PATH):
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             f.write(SETTINGS_TEMPLATE)
+        FIRST_RUN = True
     else:
         add_new_settings()
     cp = configparser.ConfigParser(interpolation=None)
@@ -336,7 +346,7 @@ class PillMenu:
     """macOS stand-in for the tray icon: a tiny always-on-top pill in the bottom-right corner
     that opens the same menu when clicked."""
 
-    def __init__(self, root: tk.Tk, items):
+    def __init__(self, root: tk.Tk, items, on_open=None):
         self.win = tk.Toplevel(root)
         self.win.overrideredirect(True)
         self.win.attributes("-topmost", True)
@@ -350,8 +360,10 @@ class PillMenu:
                 self.menu.add_separator()
             else:
                 self.menu.add_command(label=item[0], command=item[1])
-        label.bind("<Button-1>", self.popup)
+        label.bind("<Button-1>", (lambda e: on_open()) if on_open else self.popup)
+        label.bind("<Control-Button-1>", self.popup)
         label.bind("<Button-2>", self.popup)
+        label.bind("<Button-3>", self.popup)
         self.win.update_idletasks()
         w, h = self.win.winfo_reqwidth(), self.win.winfo_reqheight()
         sw, sh = self.win.winfo_screenwidth(), self.win.winfo_screenheight()
@@ -383,6 +395,9 @@ class VoiceTyping:
         self.restart_requested = False      # settings saved: start a fresh copy after quitting
         self.file_queue = queue.Queue()     # files picked from the tray menu
         self.key_events = queue.Queue()     # hotkey events, handled off the hook thread (see key_hook)
+        self.summary_queue = queue.Queue()  # transcripts to summarize from the Recordings page
+        self.summarizer = None
+        self.window = None                  # the MainWindow, once the UI is up
 
     # ---- model -------------------------------------------------------------------------
     def load_model(self):
@@ -537,7 +552,8 @@ class VoiceTyping:
                     self.model, self.model_lock, self.device, MEETING_DIR, models_dir(),
                     self.ui, speakers=MEETING_SPEAKERS, chunk_seconds=MEETING_CHUNK_SECONDS,
                     threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower(),
-                    audio_dir=MEETING_AUDIO_DIR.strip() or None, subfolders=MEETING_SUBFOLDERS)
+                    audio_dir=MEETING_AUDIO_DIR.strip() or None, subfolders=MEETING_SUBFOLDERS,
+                    post=self.post_transcript)
                 self.meeting.start()
             except Exception:
                 log.exception("could not start meeting recording")
@@ -570,8 +586,10 @@ class VoiceTyping:
         ffmpeg = lambda: ensure_ffmpeg(BUNDLE_DIR, DATA_DIR, lambda text: self.ui.put((text, "#2980b9", None)))
         job = FileTranscription(path, self.model, self.model_lock, self.device, models_dir(), self.ui, ffmpeg,
                                 out_dir=FILE_TRANSCRIPT_DIR.strip() or None, speakers=MEETING_SPEAKERS,
-                                threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower())
+                                threads=MEETING_THREADS, language=LANGUAGE, open_mode=MEETING_OPEN.lower(),
+                                post=self.post_transcript)
         job.run()
+        return job.final_path if os.path.exists(job.final_path) else None
 
     def file_worker(self):
         """Transcribes files picked from the tray menu, one after another."""
@@ -579,10 +597,77 @@ class VoiceTyping:
             path = self.file_queue.get()
             if path is None:
                 return
+            self.notify("file", path=path, status="Transcribing...")
             try:
-                self.transcribe_file(path)
-            except Exception:
+                out = self.transcribe_file(path)
+                self.notify("file", path=path, status="Done" if out else "Failed - see the log", transcript=out)
+            except Exception as e:
                 log.exception("file transcription failed: %s", path)
+                self.notify("file", path=path, status=f"Failed: {e}")
+
+    # ---- summaries and the window ------------------------------------------------------
+    def post_transcript(self, path):
+        """Runs in the meeting / file thread once a transcript is written, before it is opened."""
+        if SUMMARIES and summarize.status()["ready"]:
+            self.summarize_now(path)
+
+    def summarize_now(self, path):
+        if self.summarizer is None:
+            self.summarizer = summarize.Summarizer(threads=MEETING_THREADS)
+        name = os.path.basename(path)
+
+        def progress(text):
+            self.ui.put((text, "#8e44ad", None))
+            self.notify("summary", text=f"{text}  ({name})")
+
+        try:
+            self.summarizer.summarize_file(path, progress)
+            self.ui.put(("Summary written", "#27ae60", 3000))
+            self.notify("summary", text="Ready", done=True, path=path)
+        except Exception as e:
+            log.exception("summary failed: %s", path)
+            self.ui.put((f"Summary failed: {e}", "#7f8c8d", 5000))
+            self.notify("summary", text="Ready", done=True, path=path, error=f"Could not summarize {name}:\n{e}")
+
+    def summary_worker(self):
+        while True:
+            self.summarize_now(self.summary_queue.get())
+
+    def notify(self, kind, **data):
+        if self.window is not None:
+            self.window.event(kind, **data)
+
+    # What MainWindow needs from the app (see main_window.py).
+    def transcript_folders(self):
+        return [MEETING_DIR] + ([FILE_TRANSCRIPT_DIR] if FILE_TRANSCRIPT_DIR.strip() else [])
+
+    def request_transcribe(self, paths):
+        for p in paths:
+            self.file_queue.put(p)
+
+    def request_summary(self, path):
+        self.summary_queue.put(path)
+
+    @staticmethod
+    def summaries_enabled():
+        return SUMMARIES
+
+    def set_summaries(self, on):
+        global SUMMARIES
+        SUMMARIES = bool(on)
+        try:
+            from settings_window import read_values, write_values
+            values = read_values(SETTINGS_PATH)
+            values["summaries"] = "yes" if on else "no"
+            write_values(SETTINGS_PATH, SETTINGS_TEMPLATE, values)
+        except Exception:
+            log.exception("could not save the summaries setting")
+
+    def restart(self):
+        self.ui.put("restart")
+
+    def quit(self):
+        self.ui.put("quit")
 
     # ---- worker ------------------------------------------------------------------------
     def worker(self):
@@ -646,27 +731,28 @@ class VoiceTyping:
         overlay = Overlay(root) if SHOW_OVERLAY else None
         quitting = {"on": False}
 
-        def open_transcripts():
-            os.makedirs(MEETING_DIR, exist_ok=True)
-            sysglue.open_path(MEETING_DIR)
+        # What the window shows and calls (see main_window.py).
+        self.version, self.settings_path, self.template = __version__, SETTINGS_PATH, SETTINGS_TEMPLATE
+        self.icon_path, self.log_path, self.media_types = icon_path(), LOG_PATH, MEDIA_TYPES
+        self.notices_path = os.path.join(APP_DIR, "THIRD-PARTY-NOTICES.md")
+        self.hotkey, self.meeting_hotkey, self.dictation_mode = HOTKEY, MEETING_HOTKEY, DICTATION_MODE.lower()
 
+        open_window = lambda page="recordings": self.ui.put(("window", page))
         menu_items = [
-            ("Transcribe a file...", lambda: self.ui.put("pick_file")),
-            ("Open transcripts folder", open_transcripts),
-            ("View log", lambda: sysglue.open_path(LOG_PATH)),
-            None,
-            ("Settings...", lambda: self.ui.put("settings")),
+            ("Open Voice Typing", open_window),
+            ("Settings...", lambda: open_window("set:Dictation")),
             None,
             ("Quit Voice Typing", lambda: self.ui.put("quit")),
         ]
         tray = None
         if not self.files:                  # a command-line run just does its files and exits
+            self.window = MainWindow(root, self)
             if sysglue.IS_WIN:
                 tray = Tray(f"Voice Typing {__version__} - hold {HOTKEY} to dictate, tap {MEETING_HOTKEY} for a meeting",
-                            icon_path(), menu_items)
+                            icon_path(), menu_items, on_open=open_window)
                 tray.start()
             else:
-                PillMenu(root, menu_items)  # macOS: a small always-visible pill with the same menu
+                PillMenu(root, menu_items, on_open=open_window)  # macOS: a small always-visible pill
 
         def shutdown():
             # A meeting in progress is stopped and allowed to finish writing its transcript first.
@@ -688,12 +774,14 @@ class VoiceTyping:
             try:
                 while True:
                     msg = self.ui.get_nowait()
-                    if msg == "pick_file":
-                        self.pick_files(root)
+                    if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "window":
+                        if self.window is not None:
+                            self.window.show(msg[1])
                         continue
-                    if msg == "settings":
-                        SettingsWindow(root, SETTINGS_PATH, SETTINGS_TEMPLATE, lambda: self.ui.put("restart"),
-                                       icon_path(), __version__)
+                    if msg == "download_summary_model":
+                        if self.window is not None:
+                            self.window.show("summaries")
+                            self.window.start_download()
                         continue
                     if msg == "restart":
                         self.restart_requested = True
@@ -709,8 +797,10 @@ class VoiceTyping:
                         continue
                     if msg is None:
                         overlay.hide()
+                        self.notify("status", text="Ready")
                     else:
                         overlay.show(*msg)
+                        self.notify("status", text=msg[0])
             except queue.Empty:
                 pass
             root.after(40, pump)
@@ -734,6 +824,7 @@ class VoiceTyping:
             threading.Thread(target=self.worker, daemon=True).start()
             threading.Thread(target=self.file_worker, daemon=True).start()
             threading.Thread(target=self.key_worker, daemon=True).start()
+            threading.Thread(target=self.summary_worker, daemon=True).start()
             # One global hook, matched by key *name*. (On Windows, keyboard.on_press_key() matches
             # by scan code, and Left and Right Alt share one, so it fired - and swallowed - both.)
             # On macOS the hook needs the Accessibility permission; ask, then keep trying.
@@ -748,6 +839,10 @@ class VoiceTyping:
             log.info("ready - %s %s to talk, tap %s for a meeting", verb, HOTKEY, MEETING_HOTKEY)
             self.ui.put((f"Voice Typing ready - {verb} {HOTKEY.title()} to talk, tap {MEETING_HOTKEY.title()} for a meeting",
                          "#27ae60", 3000))
+            if "--summaries" in sys.argv:          # the installer's "download the summary model" option
+                self.ui.put("download_summary_model")
+            elif FIRST_RUN:
+                self.ui.put(("window", "about"))
 
         threading.Thread(target=startup, daemon=True).start()
         root.after(40, pump)

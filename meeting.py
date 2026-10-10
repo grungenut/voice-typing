@@ -30,6 +30,7 @@ import numpy as np
 import sounddevice as sd
 
 import sysglue
+import transcripts
 
 sc = None
 if sysglue.IS_WIN:
@@ -63,8 +64,9 @@ def _ms(seconds: float) -> str:
 class MeetingSession:
     def __init__(self, model, model_lock, device, out_dir, models_dir, ui, speakers=0,
                  chunk_seconds=30, threads=8, language="en", open_mode="transcript",
-                 audio_dir=None, subfolders=False):
+                 audio_dir=None, subfolders=False, post=None):
         self.model, self.model_lock, self.device = model, model_lock, device
+        self.post = post                     # called with the transcript path once written, before it opens
         self.open_mode = open_mode           # transcript | folder | both | no
         self.out_dir, self.models_dir, self.ui = out_dir, models_dir, ui
         self.speakers, self.chunk_seconds, self.threads, self.language = speakers, chunk_seconds, threads, language
@@ -265,6 +267,7 @@ class MeetingSession:
                 pass
             self.ui.put(("Transcript saved", "#27ae60", 3000))
             log.info("transcript -> %s", self.final_path)
+            self._post()
             try:
                 if self.open_mode in ("transcript", "both"):
                     sysglue.open_path(self.final_path)
@@ -305,6 +308,14 @@ class MeetingSession:
                  len({t[2] for t in turns}))
         return turns
 
+    def _post(self):
+        """The summary step (if the app has one) runs here, so the transcript opens complete."""
+        if getattr(self, "post", None):
+            try:
+                self.post(self.final_path)
+            except Exception:
+                log.exception("post-transcript step failed")
+
     def _write_final(self, length, turns):
         # Give each word the speaker whose turn covers its midpoint (or the nearest turn within 1 s).
         labeled = []
@@ -340,12 +351,11 @@ class MeetingSession:
             lines.append(cur)
 
         n_spk = len(order)
+        title = getattr(self, "title", None) or f"Meeting on {self.started:%B %d, %Y at %I:%M %p}".replace(" 0", " ")
+        head = transcripts.header_lines(title, self.started, _hms(length), n_spk, bool(turns), self.wav_path,
+                                        source=getattr(self, "source", None))
         with open(self.final_path, "w", encoding="utf-8") as f:
-            f.write(getattr(self, "title", None) or f"Meeting transcript - {self.started:%A, %B %d, %Y, %I:%M %p}")
-            f.write("\n")
-            f.write(f"Length {_hms(length)} - {n_spk} speaker{'s' if n_spk != 1 else ''} detected"
-                    + (" (labels unavailable)" if not turns else "") + "\n")
-            f.write(f"Recording: {os.path.abspath(self.wav_path)}\n\n")
+            f.write("\n".join(head) + "\n\n")
             for ln in lines:
                 who = f"Speaker {order[ln['spk']]}" if ln["spk"] in order else "Unknown"
                 f.write(f"[{_hms(ln['start'])}] {who}: {''.join(ln['text']).strip()}\n\n")

@@ -32,6 +32,13 @@ MODELS = [
      "https://ffmpeg.org - build from https://github.com/BtbN/FFmpeg-Builds",
      "Bundled as ffmpeg\\ffmpeg.exe and its DLLs, run as a separate program; the source install downloads the same build on first use. "
      "Source code for this build: https://github.com/BtbN/FFmpeg-Builds (the LGPL license text is below)."),
+    ("llama.cpp (runs the summary model)", "Georgi Gerganov and the llama.cpp contributors", "MIT",
+     "https://github.com/ggml-org/llama.cpp",
+     "Not bundled: downloaded on request from the window's Summaries page (release b11541, llama-server and its "
+     "libraries) into %LOCALAPPDATA%\\VoiceTyping\\llama and run as a separate program."),
+    ("Qwen3-4B (summary language model, GGUF Q4_K_M)", "Alibaba Cloud, Qwen team", "Apache-2.0",
+     "https://huggingface.co/Qwen/Qwen3-4B-GGUF",
+     "Not bundled: downloaded on request from the window's Summaries page into %LOCALAPPDATA%\\VoiceTyping\\summary."),
     ("ONNX Runtime", "Microsoft", "MIT", "https://github.com/microsoft/onnxruntime",
      "Bundled inside sherpa-onnx as onnxruntime.dll."),
     ("PortAudio", "PortAudio community", "MIT", "http://www.portaudio.com",
