@@ -1,0 +1,12 @@
+name = Narrative
+description = A chronological narrative of the encounter in plain prose, for a chart, a case file or a report. A draft to review.
+output = file
+instructions:
+Write a narrative account of this recording: what happened, in the order it happened, in plain prose paragraphs. It is a draft for the person who recorded it to review.
+
+- Third person, past tense ("The patient stated...", "Mr. Lee asked...").
+- Keep names, dates, times, numbers, amounts, medication names and doses exactly as spoken.
+- Report what each person said or did; do not add interpretation, findings or facts that are not in the transcript.
+- Leave out small talk unless it matters to the account.
+- End with one short paragraph headed "Outcome:" saying how the encounter ended and what was agreed or planned. If nothing was agreed, say so.
+- About 150 to 400 words, depending on how much happened.

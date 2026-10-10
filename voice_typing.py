@@ -42,6 +42,7 @@ import sysglue
 from meeting import MeetingSession
 from transcribe_file import MEDIA_TYPES, FileTranscription, ensure_ffmpeg
 import summarize
+import templates
 from main_window import MainWindow
 if sysglue.IS_WIN:
     from tray import Tray
@@ -70,12 +71,13 @@ MEETING_CHUNK_SECONDS = 30 # how often the live transcript file is updated while
 MEETING_THREADS = 8        # CPU threads for speaker labeling at the end
 FILE_TRANSCRIPT_DIR = ""   # where transcripts of existing files go; "" = next to the file
 SUMMARIES = False          # title + summary for each new transcript, by the local summary model
+SUMMARY_TEMPLATE = "Meeting summary"   # which note template the summary step uses (window > Note templates)
 MEETING_HOLD_SECONDS = 0   # hold the meeting key this long to start/stop a recording (0 = a tap does it)
 MEETING_TYPE_LOCATION = "no"  # type the recording's file location where the cursor is: no, start, stop, both
 MEETING_OPEN = "transcript"  # when the transcript is ready, open: transcript, folder (audio selected), both, no
 # ------------------------------------------------------------------------------------------
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 # Where things live. As a script, the log sits beside the script; as an exe (PyInstaller), the
 # program folder may not be writable, so everything the app writes goes to local app data.
@@ -155,6 +157,10 @@ file_transcript_dir =
 ; writes a title and summary into the transcript. Needs the summary model, downloaded from the
 ; window's Summaries page. yes or no.
 summaries = no
+
+; Which note template the summary step uses: Meeting summary, SOAP note, Narrative, or one
+; you made on the window's Note templates page.
+summary_template = Meeting summary
 """.replace("@KEY_NAMES@", sysglue.KEY_NAME_HELP).replace("@HOTKEY@", sysglue.DEFAULT_HOTKEY) \
    .replace("@MEETING_HOTKEY@", sysglue.DEFAULT_MEETING_HOTKEY) \
    .replace("@MEETING_DIR@", "%USERPROFILE%\\Documents\\Meeting Transcripts" if sysglue.IS_WIN
@@ -611,19 +617,25 @@ class VoiceTyping:
         if SUMMARIES and summarize.status()["ready"]:
             self.summarize_now(path)
 
-    def summarize_now(self, path):
+    def summarize_now(self, path, template_name=None):
         if self.summarizer is None:
             self.summarizer = summarize.Summarizer(threads=MEETING_THREADS)
         name = os.path.basename(path)
+        tpl = templates.get(template_name or SUMMARY_TEMPLATE, BUNDLE_DIR, APP_DIR)
 
         def progress(text):
             self.ui.put((text, "#8e44ad", None))
             self.notify("summary", text=f"{text}  ({name})")
 
         try:
-            self.summarizer.summarize_file(path, progress)
-            self.ui.put(("Summary written", "#27ae60", 3000))
-            self.notify("summary", text="Ready", done=True, path=path)
+            title, _, note = self.summarizer.summarize_file(path, progress, tpl)
+            self.ui.put(((f"{tpl['name']} written" if note else "Summary written"), "#27ae60", 3000))
+            self.notify("summary", text="Ready", done=True, path=path, note=note)
+            if note:
+                try:
+                    sysglue.open_path(note)
+                except Exception:
+                    log.exception("could not open the note")
         except Exception as e:
             log.exception("summary failed: %s", path)
             self.ui.put((f"Summary failed: {e}", "#7f8c8d", 5000))
@@ -631,7 +643,8 @@ class VoiceTyping:
 
     def summary_worker(self):
         while True:
-            self.summarize_now(self.summary_queue.get())
+            path, template_name = self.summary_queue.get()
+            self.summarize_now(path, template_name)
 
     def notify(self, kind, **data):
         if self.window is not None:
@@ -645,23 +658,38 @@ class VoiceTyping:
         for p in paths:
             self.file_queue.put(p)
 
-    def request_summary(self, path):
-        self.summary_queue.put(path)
+    def request_summary(self, path, template_name=None):
+        self.summary_queue.put((path, template_name))
 
     @staticmethod
     def summaries_enabled():
         return SUMMARIES
 
+    @staticmethod
+    def template_default():
+        return SUMMARY_TEMPLATE
+
+    @staticmethod
+    def templates():
+        return templates.load_all(BUNDLE_DIR, APP_DIR)
+
     def set_summaries(self, on):
-        global SUMMARIES
-        SUMMARIES = bool(on)
+        self.set_setting("summaries", bool(on))
+
+    def set_setting(self, key, value):
+        """Save one setting right away (no restart) and apply it to the running copy."""
+        global SUMMARIES, SUMMARY_TEMPLATE
+        if key == "summaries":
+            SUMMARIES = bool(value)
+        elif key == "summary_template":
+            SUMMARY_TEMPLATE = str(value)
         try:
             from settings_window import read_values, write_values
             values = read_values(SETTINGS_PATH)
-            values["summaries"] = "yes" if on else "no"
+            values[key] = ("yes" if value else "no") if isinstance(value, bool) else str(value)
             write_values(SETTINGS_PATH, SETTINGS_TEMPLATE, values)
         except Exception:
-            log.exception("could not save the summaries setting")
+            log.exception("could not save the %s setting", key)
 
     def restart(self):
         self.ui.put("restart")

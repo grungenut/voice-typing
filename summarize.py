@@ -28,6 +28,8 @@ import time
 import urllib.request
 import zipfile
 
+import datetime
+
 import sysglue
 import transcripts
 
@@ -48,6 +50,11 @@ RUNTIME_BYTES = 19_518_702 if sysglue.IS_WIN else 12_100_000
 CONTEXT = 6144                 # tokens the model sees at once; keeps memory near 1 GB on top of the model
 CHUNK_WORDS = 1800             # a transcript longer than this is summarized in pieces, then merged
 USER_AGENT = "VoiceTyping (https://github.com/grungenut/voice-typing)"
+
+DEFAULT_INSTRUCTIONS = (
+    "Write a summary of this recording: 2 to 4 sentences on what it was about and the outcome, then "
+    "'Key points:' with 3 to 8 bullets, then 'Action items:' with who does what by when (or: none mentioned)."
+)
 
 SYSTEM_PROMPT = (
     "You summarize transcripts of recorded conversations and meetings for the person who recorded "
@@ -294,7 +301,8 @@ class Summarizer:
         summary = re.sub(r"\n{3,}", "\n\n", summary).strip()
         return title, summary
 
-    def summarize_text(self, text, progress=lambda t: None):
+    def summarize_text(self, text, progress=lambda t: None, template=None):
+        instructions = (template or {}).get("instructions") or DEFAULT_INSTRUCTIONS
         chunks = self._chunks(text)
         notes = []
         if len(chunks) > 1:
@@ -312,19 +320,18 @@ class Summarizer:
                                                 "name, number and action item:\n\n" + source, max_tokens=700)
         else:
             source = "TRANSCRIPT:\n" + chunks[0]
-        progress("Summarizing... writing the summary")
+        progress("Summarizing... writing the " + ((template or {}).get("name") or "summary").lower())
         answer = self.chat(
-            "Write a title and a summary of this recording. Answer in exactly this form:\n\n"
-            "TITLE: <at most 8 words saying what the conversation was about>\n"
-            "SUMMARY:\n"
-            "<2 to 4 sentences on what it was about and the outcome>\n\n"
-            "Key points:\n- <3 to 8 bullets with the substance: facts, decisions, concerns>\n\n"
-            "Action items:\n- <who does what, by when, if any; otherwise write: none mentioned>\n\n"
-            + source, max_tokens=900)
+            "Answer in exactly this form: a first line\n"
+            "TITLE: <at most 8 words saying what the recording was about>\n"
+            "and then the text described below, with no other preamble.\n\n"
+            + instructions.strip() + "\n\n" + source, max_tokens=1200)
         return self._parse(answer)
 
-    def summarize_file(self, path, progress=lambda t: None):
-        """Title + summary for one transcript file, written into its header. Returns (title, summary)."""
+    def summarize_file(self, path, progress=lambda t: None, template=None):
+        """Title + note for one transcript. The title always goes into the transcript's header;
+        the note goes into its Summary block (template output = summary) or into its own file
+        beside the transcript (output = file). Returns (title, text, note_path or None)."""
         text = transcripts.body_text(path)
         if len(text.split()) < 15:
             raise ValueError("the transcript is too short to summarize")
@@ -333,11 +340,27 @@ class Summarizer:
             progress("Starting the summary model...")
             self.start()
             try:
-                title, summary = self.summarize_text(text, progress)
+                title, body = self.summarize_text(text, progress, template)
             finally:
                 self.stop()
-        if not summary:
+        if not body:
             raise RuntimeError("the model returned nothing")
-        transcripts.write_summary(path, title, summary)
-        log.info("summary (%d words in, %.0fs): %r -> %s", len(text.split()), time.time() - t0, title, path)
-        return title, summary
+        note_path = None
+        if template and template.get("output") == "file":
+            info = transcripts.parse(path) or {}
+            transcripts.write_summary(path, title or info.get("title", ""), info.get("summary", ""))
+            base, kind = os.path.splitext(path)[0], template["name"].strip()
+            note_path = f"{base} - {kind}.txt"
+            n = 2
+            while os.path.exists(note_path):                 # never overwrite a note someone may have edited
+                note_path = f"{base} - {kind} ({n}).txt"
+                n += 1
+            when = datetime.datetime.now().strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
+            with open(note_path, "w", encoding="utf-8", newline="\n") as f:
+                f.write(f"{title or kind}\nNote: {kind} - a draft to review, written by the local summary model on {when}\n"
+                        f"From: {os.path.abspath(path)}\n\n{body}\n")
+        else:
+            transcripts.write_summary(path, title, body)
+        log.info("%s (%d words in, %.0fs): %r -> %s", (template or {}).get("name", "summary"), len(text.split()),
+                 time.time() - t0, title, note_path or path)
+        return title, body, note_path

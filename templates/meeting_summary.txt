@@ -1,0 +1,16 @@
+name = Meeting summary
+description = What the conversation was about, the key points, and any action items. The default.
+output = summary
+instructions:
+Write a summary of this recording for the person who made it.
+
+Give it this shape:
+<2 to 4 sentences on what the conversation was about and how it ended>
+
+Key points:
+- <3 to 8 bullets with the substance: facts, decisions, concerns, numbers>
+
+Action items:
+- <who does what, by when, if any; otherwise write: none mentioned>
+
+Use only what the transcript says. Do not add facts, names or numbers that are not in it.

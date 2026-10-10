@@ -48,8 +48,10 @@ def parse(path, with_body=False):
     lines = text.splitlines()
     if not lines or not lines[0].strip():
         return None
+    if any(ln.startswith("Note:") for ln in lines[1:3]):
+        return None                                   # a note written from a transcript, not one itself
     body_at = next((i for i, ln in enumerate(lines) if TIMESTAMP_LINE.match(ln)), None)
-    if body_at is None and "Length" not in text[:600]:
+    if body_at is None and not any(ln.startswith("Length") for ln in lines[:8]):
         return None                                   # some other text file
     head = lines[:body_at] if body_at is not None else lines[:40]
     info = {"path": path, "title": lines[0].strip(), "recorded": None, "length": "", "speakers": "",
@@ -143,6 +145,20 @@ def write_summary(path, title, summary):
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
     os.replace(tmp, path)
+
+
+def notes_for(path):
+    """Note files written from this transcript: '<name> - <template>.txt' beside it."""
+    base = os.path.splitext(os.path.basename(path))[0] + " - "
+    folder = os.path.dirname(os.path.abspath(path))
+    out = []
+    try:
+        for fn in sorted(os.listdir(folder)):
+            if fn.startswith(base) and fn.lower().endswith(".txt"):
+                out.append(os.path.join(folder, fn))
+    except OSError:
+        pass
+    return out
 
 
 def find_transcripts(folders, depth=2):

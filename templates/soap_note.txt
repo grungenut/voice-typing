@@ -1,0 +1,26 @@
+name = SOAP note
+description = Subjective, Objective, Assessment and Plan from a recorded clinical visit. A draft for the clinician to review and sign.
+output = file
+instructions:
+Write a SOAP note from this transcript of a clinical visit. It is a draft: the clinician will review, correct and sign it.
+
+Use exactly these headings, in this order:
+
+Subjective:
+<the patient's own account: chief complaint, history of the present illness, relevant past history, medications, allergies, social history, and the review of systems, as stated in the visit>
+
+Objective:
+<what was observed or measured during the visit: vital signs, examination findings, test results that were read out. If none were stated, write: not documented in the recording>
+
+Assessment:
+<the clinician's stated impression or diagnosis, and the reasoning given. If none was stated, write: not stated in the recording>
+
+Plan:
+<what was decided: treatments, prescriptions with name, dose, route and frequency exactly as spoken, tests ordered, referrals, patient instructions, follow-up timing>
+
+Rules:
+- Use only what the transcript says. Never add findings, diagnoses, medications or numbers that were not spoken.
+- Keep names, dates, numbers, vital signs and medication details exactly as spoken. Do not round or convert units.
+- If something belongs in a section but was not discussed, write "not discussed" rather than leaving it out or guessing.
+- Write in the third person ("the patient reports"), past tense, plain clinical English, no abbreviations the clinician did not use.
+- Do not include small talk.

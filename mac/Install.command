@@ -93,6 +93,7 @@ say "Installing the program into $APPDIR"
 mkdir -p "$APPDIR/assets"
 cp "$SRC"/*.py "$APPDIR/"
 cp "$SRC"/assets/* "$APPDIR/assets/" 2>/dev/null || true
+mkdir -p "$APPDIR/templates" && cp "$SRC"/templates/* "$APPDIR/templates/" 2>/dev/null || true
 cp "$SRC/LICENSE" "$SRC/README.md" "$APPDIR/" 2>/dev/null || true
 
 say "Making $APP"
@@ -114,8 +115,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
     <key>CFBundleName</key>              <string>Voice Typing</string>
     <key>CFBundleDisplayName</key>       <string>Voice Typing</string>
     <key>CFBundleIdentifier</key>        <string>com.jamesbeadle.voicetyping</string>
-    <key>CFBundleVersion</key>           <string>1.4.0</string>
-    <key>CFBundleShortVersionString</key><string>1.4.0</string>
+    <key>CFBundleVersion</key>           <string>1.5.0</string>
+    <key>CFBundleShortVersionString</key><string>1.5.0</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleExecutable</key>        <string>Voice Typing</string>
     <key>CFBundleIconFile</key>          <string>voice_typing</string>

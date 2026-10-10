@@ -112,6 +112,26 @@ Recordings page. Everything runs on your computer; the transcript is never sent 
 Expect a minute or a few per meeting on a computer without an NVIDIA card. The installer
 offers the download as an option; it can also be removed from the Summaries page.
 
+**Note styles.** What gets written is a *template*, chosen on the Summaries page (for new
+recordings) or beside the Write button on the Recordings page (for any recording). Built in:
+
+- **Meeting summary** - what it was about, key points, action items, written into the top of
+  the transcript. The default.
+- **SOAP note** - Subjective, Objective, Assessment, Plan from a recorded clinical visit,
+  written as its own file beside the transcript, with medication names and doses, vitals and
+  dates kept exactly as spoken and "not discussed" where something was not said.
+- **Narrative** - a chronological account of the encounter in plain prose, as its own file.
+
+Every note is a draft for the person who recorded it to review. The **Note templates** page
+edits these or makes new ones: a name, a description, where the note goes, and the
+instructions to the model (the sections you want, in what order, and what to do when
+something was not said). Your templates are kept in your own folder; a built-in one you edit
+can be restored.
+
+**Recording patients or clients.** Get consent before recording, keep the transcripts folder
+on an encrypted drive (BitLocker or FileVault), and treat every note as a draft until a
+clinician has reviewed and signed it.
+
 ## Settings
 
 Tray icon → **Settings...** (or the window's sidebar) shows every setting, grouped into
@@ -138,6 +158,7 @@ prefer a text editor. New versions add their new settings automatically.
 | `meeting_chunk_seconds` | `30` | How often the live transcript file is updated |
 | `meeting_threads` | `8` | CPU threads for speaker labeling |
 | `summaries` | `no` | Title and summary for each new transcript, by the local summary model (window → Summaries) |
+| `summary_template` | `Meeting summary` | Which note template the summary step uses: `Meeting summary`, `SOAP note`, `Narrative`, or your own |
 | `file_transcript_dir` | blank | Where transcripts of existing files go; blank = next to the file |
 
 ## Recording other people

@@ -25,11 +25,13 @@ from tkinter import filedialog, messagebox, ttk
 
 import summarize
 import sysglue
+import templates
 import transcripts
 from settings_window import (ACCENT, BG, CARD, FONT, GREEN, HOVER, LINE, MUTED, SCHEMA, SECTION_NOTES, TEXT,
                              Switch, Tooltip, read_values, template_defaults, write_values)
 
 PROJECT_URL = "https://github.com/grungenut/voice-typing"
+OUTPUT_LABELS = {"summary": "The Summary block at the top of the transcript", "file": "Its own note file, beside the transcript"}
 SETTINGS_SECTIONS = [s for s in dict.fromkeys(sec for sec, *_ in SCHEMA)]   # Dictation, Meetings, Files
 
 
@@ -93,7 +95,7 @@ class MainWindow:
 
         self.side_items, self.pages = {}, {}
         entries = [("recordings", "Recordings"), ("transcribe", "Transcribe a file"), ("summaries", "Summaries"),
-                   ("_", "SETTINGS")] + [("set:" + s, s) for s in SETTINGS_SECTIONS] + [("_", ""), ("about", "About")]
+                   ("templates", "Note templates"), ("_", "SETTINGS")] + [("set:" + s, s) for s in SETTINGS_SECTIONS] + [("_", ""), ("about", "About")]
         for key, label in entries:
             if key == "_":
                 tk.Label(sidebar, text=label, font=(FONT, 8, "bold"), fg=MUTED, bg=BG, anchor="w", padx=12,
@@ -110,6 +112,7 @@ class MainWindow:
         self.pages["recordings"] = self.build_recordings()
         self.pages["transcribe"] = self.build_transcribe()
         self.pages["summaries"] = self.build_summaries()
+        self.pages["templates"] = self.build_templates()
         values = template_defaults(app.template)
         values.update(read_values(app.settings_path))
         for sec in SETTINGS_SECTIONS:
@@ -160,7 +163,9 @@ class MainWindow:
         self.pages[key].lift()
         self.tip.hide()
         titles = {"recordings": "Your meeting recordings and transcripts", "transcribe": "Transcribe an existing recording or video",
-                  "summaries": "A title and summary for each recording, made on this computer", "about": f"Version {self.app.version}"}
+                  "summaries": "A title and summary for each recording, made on this computer",
+                  "templates": "What the summary model writes: a meeting summary, a SOAP note, a narrative, or your own",
+                  "about": f"Version {self.app.version}"}
         self.page_title.config(text=titles.get(key, SECTION_NOTES.get(key[4:], "")))
         if key.startswith("set:"):
             self.settings_buttons.pack(side="right")
@@ -170,6 +175,8 @@ class MainWindow:
             self.refresh_recordings()
         elif key == "summaries":
             self.refresh_summaries()
+        elif key == "templates":
+            self.refresh_templates()
 
     def post(self, fn, *args):
         """Run fn on the Tk thread (safe to call from any thread)."""
@@ -298,6 +305,8 @@ class MainWindow:
         self.detail_text = tk.Text(inner, height=7, wrap="word", font=(FONT, 10), fg=TEXT, bg=CARD, relief="flat",
                                    highlightthickness=0, state="disabled", cursor="arrow")
         self.detail_text.pack(fill="x")
+        self.notes_row = tk.Frame(inner, bg=CARD)
+        self.notes_row.pack(fill="x")
         buttons = tk.Frame(inner, bg=CARD)
         buttons.pack(fill="x", pady=(8, 0))
         self.b_open = self.button(buttons, "Open transcript", self.open_selected, primary=True)
@@ -306,8 +315,12 @@ class MainWindow:
         self.b_play.pack(side="left", padx=8)
         self.b_folder = self.button(buttons, "Show in folder", lambda: self.reveal_selected())
         self.b_folder.pack(side="left")
-        self.b_sum = self.button(buttons, "Summarize", self.summarize_selected)
+        self.b_sum = self.button(buttons, "Write", self.summarize_selected)
         self.b_sum.pack(side="right")
+        self.style_var = tk.StringVar(value=self.app.template_default())
+        self.style_box = ttk.Combobox(buttons, textvariable=self.style_var, width=18, style="Set.TCombobox",
+                                      font=(FONT, 10), state="readonly")
+        self.style_box.pack(side="right", padx=(0, 8))
         self.sum_hint = tk.Label(buttons, text="", font=(FONT, 9), fg=MUTED, bg=CARD)
         self.sum_hint.pack(side="right", padx=(0, 10))
         for b in (self.b_open, self.b_play, self.b_folder, self.b_sum):
@@ -315,6 +328,10 @@ class MainWindow:
         return page
 
     def refresh_recordings(self, keep=None):
+        names = [t["name"] for t in self.app.templates()]
+        self.style_box["values"] = names
+        if self.style_var.get() not in names and names:
+            self.style_var.set(self.app.template_default() if self.app.template_default() in names else names[0])
         selected = keep or self.selected_path()
         self.recordings = transcripts.find_transcripts(self.app.transcript_folders())
         query = self.search_var.get().strip().lower()
@@ -352,6 +369,8 @@ class MainWindow:
         info = self.selected_info()
         self.detail_text.config(state="normal")
         self.detail_text.delete("1.0", "end")
+        for child in self.notes_row.winfo_children():
+            child.destroy()
         if info is None:
             self.detail_title.config(text="No recordings yet" if not self.recordings
                                      else "No matches" if self.search_var.get().strip() else "Select a recording")
@@ -375,8 +394,12 @@ class MainWindow:
             self.enable(self.b_folder)
             ready = summarize.status()["ready"]
             self.enable(self.b_sum, ready)
-            self.b_sum.config(text="Summarize again" if info["summary"] else "Summarize")
             self.sum_hint.config(text="" if ready else "Download the summary model on the Summaries page")
+            for note in transcripts.notes_for(info["path"]):
+                label = os.path.splitext(os.path.basename(note))[0].split(" - ", 1)[-1]
+                self.link(self.notes_row, label, lambda p=note: sysglue.open_path(p)).pack(side="left", padx=(0, 14))
+            if self.notes_row.winfo_children():
+                tk.Label(self.notes_row, text="Notes:", font=(FONT, 9), fg=MUTED, bg=CARD).pack(side="left", padx=(0, 8), before=self.notes_row.winfo_children()[0])
         self.detail_text.config(state="disabled")
 
     def open_selected(self):
@@ -402,7 +425,7 @@ class MainWindow:
         info = self.selected_info()
         if info:
             self.status_var.set("Summarizing... (a few minutes on a computer without a graphics card)")
-            self.app.request_summary(info["path"])
+            self.app.request_summary(info["path"], self.style_var.get())
 
     # ---- Transcribe page -------------------------------------------------------------------
     def build_transcribe(self):
@@ -489,13 +512,37 @@ class MainWindow:
         self.auto_switch.pack(side="right")
         self.auto_var.trace_add("write", lambda *a: self.app.set_summaries(bool(self.auto_var.get())))
         tk.Frame(scard, bg=LINE, height=1).pack(fill="x", padx=14)
-        tk.Label(scard, text="When on, a meeting's transcript opens once its summary is written (a minute or a few, "
-                             "depending on the computer and the length). Older recordings can be summarized from the "
-                             "Recordings page.", font=(FONT, 9), fg=MUTED, bg=CARD, wraplength=600, justify="left",
-                 padx=14, pady=8).pack(anchor="w")
+        row2 = tk.Frame(scard, bg=CARD, padx=14, pady=8)
+        row2.pack(fill="x")
+        tk.Label(row2, text="Note style for new recordings", font=(FONT, 10), fg=TEXT, bg=CARD).pack(side="left")
+        self.default_style_var = tk.StringVar(value=self.app.template_default())
+        self.default_style_box = ttk.Combobox(row2, textvariable=self.default_style_var, width=18, style="Set.TCombobox",
+                                              font=(FONT, 10), state="readonly")
+        self.default_style_box.pack(side="right")
+        self.default_style_box.bind("<<ComboboxSelected>>", lambda e: self.app.set_setting("summary_template", self.default_style_var.get()))
+        self.default_style_note = tk.Label(scard, text="", font=(FONT, 9), fg=MUTED, bg=CARD, wraplength=600, justify="left", padx=14)
+        self.default_style_note.pack(anchor="w")
+        self.default_style_var.trace_add("write", lambda *a: self._style_note())
+        tk.Frame(scard, bg=LINE, height=1).pack(fill="x", padx=14, pady=(8, 0))
+        tk.Label(scard, text="When on, a meeting's transcript (or the note) opens once it is written - a minute or a few, "
+                             "depending on the computer and the length. Older recordings can be summarized from the "
+                             "Recordings page, in any style. Styles are edited on the Note templates page.",
+                 font=(FONT, 9), fg=MUTED, bg=CARD, wraplength=600, justify="left", padx=14, pady=8).pack(anchor="w")
         return page
 
+    def _style_note(self):
+        name = self.default_style_var.get()
+        t = next((t for t in self.app.templates() if t["name"] == name), None)
+        self.default_style_note.config(text=(t["description"] if t else ""))
+
     def refresh_summaries(self):
+        names = [t["name"] for t in self.app.templates()]
+        self.default_style_box["values"] = names
+        if self.app.template_default() in names:
+            self.default_style_var.set(self.app.template_default())
+        elif names:
+            self.default_style_var.set(names[0])
+        self._style_note()
         st = summarize.status()
         if st["ready"]:
             self.sum_status.config(text="Installed and ready.", fg=GREEN)
@@ -556,6 +603,154 @@ class MainWindow:
         if messagebox.askyesno("Voice Typing", "Remove the summary model and its runtime from this computer?", parent=self.win):
             summarize.remove()
             self.refresh_summaries()
+
+    # ---- Note templates page ---------------------------------------------------------------
+    def build_templates(self):
+        page = tk.Frame(self.pane, bg=BG)
+        left = tk.Frame(page, bg=BG)
+        left.pack(side="left", fill="y", padx=(0, 14))
+        louter, lcard = self.card(left, "Templates")
+        louter.pack(fill="both", expand=True)
+        self.tpl_list = ttk.Treeview(lcard, columns=("name",), show="", style="App.Treeview", selectmode="browse", height=12)
+        self.tpl_list.column("name", width=190, anchor="w")
+        self.tpl_list.pack(fill="both", expand=True, padx=1, pady=1)
+        self.tpl_list.bind("<<TreeviewSelect>>", lambda e: self.load_template())
+        lb = tk.Frame(left, bg=BG)
+        lb.pack(fill="x", pady=(8, 0))
+        self.button(lb, "New", self.new_template).pack(side="left")
+        self.button(lb, "Duplicate", self.duplicate_template).pack(side="left", padx=8)
+
+        right = tk.Frame(page, bg=BG)
+        right.pack(side="left", fill="both", expand=True)
+        router, rcard = self.card(right, "Template",
+                                  "The instructions are what the model is told to write from the transcript. "
+                                  "Say what sections you want, in what order, and what to do when something was not said.")
+        router.pack(fill="both", expand=True)
+        form = tk.Frame(rcard, bg=CARD, padx=14, pady=10)
+        form.pack(fill="both", expand=True)
+        form.grid_columnconfigure(1, weight=1)
+        form.grid_rowconfigure(3, weight=1)
+        self.tpl_name, self.tpl_desc, self.tpl_output = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        tk.Label(form, text="Name", font=(FONT, 10), fg=TEXT, bg=CARD).grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(form, textvariable=self.tpl_name, width=36, style="Set.TEntry", font=(FONT, 10)).grid(row=0, column=1, sticky="w", pady=4)
+        tk.Label(form, text="Description", font=(FONT, 10), fg=TEXT, bg=CARD).grid(row=1, column=0, sticky="w", pady=4, padx=(0, 16))
+        ttk.Entry(form, textvariable=self.tpl_desc, width=60, style="Set.TEntry", font=(FONT, 10)).grid(row=1, column=1, sticky="ew", pady=4)
+        tk.Label(form, text="Written to", font=(FONT, 10), fg=TEXT, bg=CARD).grid(row=2, column=0, sticky="w", pady=4)
+        self.tpl_output_box = ttk.Combobox(form, textvariable=self.tpl_output, width=40, style="Set.TCombobox", font=(FONT, 10),
+                                           state="readonly", values=list(OUTPUT_LABELS.values()))
+        self.tpl_output_box.grid(row=2, column=1, sticky="w", pady=4)
+        tk.Label(form, text="Instructions", font=(FONT, 10), fg=TEXT, bg=CARD).grid(row=3, column=0, sticky="nw", pady=4)
+        tbox = tk.Frame(form, bg=CARD, highlightbackground=LINE, highlightthickness=1)
+        tbox.grid(row=3, column=1, sticky="nsew", pady=4)
+        self.tpl_text = tk.Text(tbox, wrap="word", font=(FONT, 10), fg=TEXT, bg=CARD, relief="flat", height=14,
+                                highlightthickness=0, padx=8, pady=6, undo=True)
+        tsb = ttk.Scrollbar(tbox, orient="vertical", command=self.tpl_text.yview, style="App.Vertical.TScrollbar")
+        self.tpl_text.configure(yscrollcommand=tsb.set)
+        self.tpl_text.pack(side="left", fill="both", expand=True)
+        tsb.pack(side="right", fill="y")
+        self.tpl_hint = tk.Label(form, text="", font=(FONT, 9), fg=MUTED, bg=CARD, wraplength=520, justify="left")
+        self.tpl_hint.grid(row=4, column=1, sticky="w", pady=(4, 0))
+        bb = tk.Frame(right, bg=BG)
+        bb.pack(fill="x", pady=(8, 0))
+        self.b_tpl_save = self.button(bb, "Save", self.save_template, primary=True)
+        self.b_tpl_save.pack(side="right")
+        self.b_tpl_delete = self.button(bb, "Delete", self.delete_template)
+        self.b_tpl_delete.pack(side="right", padx=8)
+        self.tpl_current = None
+        return page
+
+    def refresh_templates(self, select=None):
+        self.tpl_all = self.app.templates()
+        self.tpl_list.delete(*self.tpl_list.get_children())
+        for t in self.tpl_all:
+            tag = "  (built in)" if t["builtin"] else ("  (your copy)" if t["overrides_builtin"] else "")
+            self.tpl_list.insert("", "end", iid=t["name"], values=(t["name"] + tag,))
+        names = [t["name"] for t in self.tpl_all]
+        want = select if select in names else (self.tpl_current["name"] if self.tpl_current and self.tpl_current["name"] in names else (names[0] if names else None))
+        if want:
+            self.tpl_list.selection_set(want)
+            self.load_template()
+
+    def load_template(self):
+        sel = self.tpl_list.selection()
+        t = next((t for t in self.tpl_all if t["name"] == sel[0]), None) if sel else None
+        self.tpl_current = t
+        if t is None:
+            return
+        self.tpl_name.set(t["name"])
+        self.tpl_desc.set(t["description"])
+        self.tpl_output.set(OUTPUT_LABELS[t["output"]])
+        self.tpl_text.delete("1.0", "end")
+        self.tpl_text.insert("1.0", t["instructions"])
+        self.tpl_text.edit_reset()
+        if t["builtin"]:
+            self.tpl_hint.config(text="Built in. Saving keeps your version in your own templates folder; the original stays untouched.")
+            self.b_tpl_delete.config(text="Delete")
+            self.enable(self.b_tpl_delete, False)
+        elif t["overrides_builtin"]:
+            self.tpl_hint.config(text="Your copy of a built-in template. Restoring brings the original back.")
+            self.b_tpl_delete.config(text="Restore built-in")
+            self.enable(self.b_tpl_delete, True)
+        else:
+            self.tpl_hint.config(text="Your template. It is picked by name on the Summaries and Recordings pages.")
+            self.b_tpl_delete.config(text="Delete")
+            self.enable(self.b_tpl_delete, True)
+
+    def _template_from_form(self):
+        output = next((k for k, v in OUTPUT_LABELS.items() if v == self.tpl_output.get()), "summary")
+        return {"name": self.tpl_name.get().strip(), "description": self.tpl_desc.get().strip(), "output": output,
+                "instructions": self.tpl_text.get("1.0", "end").strip(),
+                "path": None if (self.tpl_current is None or self.tpl_current["builtin"] or
+                                 self.tpl_current["name"] != self.tpl_name.get().strip()) else self.tpl_current["path"]}
+
+    def new_template(self):
+        self.tpl_current = None
+        self.tpl_list.selection_remove(*self.tpl_list.selection())
+        self.tpl_name.set("")
+        self.tpl_desc.set("")
+        self.tpl_output.set(OUTPUT_LABELS["file"])
+        self.tpl_text.delete("1.0", "end")
+        self.tpl_text.insert("1.0", "Write a <kind of note> from this transcript. It is a draft to review.\n\n"
+                                    "Use these headings, in this order:\n\n<Heading 1>:\n<what goes here>\n\n<Heading 2>:\n<what goes here>\n\n"
+                                    "Rules:\n- Use only what the transcript says; never add facts, names or numbers that are not in it.\n"
+                                    "- Keep names, dates and numbers exactly as spoken.\n- If a section was not discussed, write \"not discussed\".")
+        self.tpl_hint.config(text="A new template. Give it a name and save.")
+        self.enable(self.b_tpl_delete, False)
+
+    def duplicate_template(self):
+        if self.tpl_current is None:
+            return
+        base = self.tpl_current
+        self.tpl_current = None
+        self.tpl_list.selection_remove(*self.tpl_list.selection())
+        self.tpl_name.set(base["name"] + " (copy)")
+        self.tpl_hint.config(text="A copy. Rename it and save.")
+        self.enable(self.b_tpl_delete, False)
+
+    def save_template(self):
+        t = self._template_from_form()
+        try:
+            if t["name"] in [x["name"] for x in self.tpl_all if x["builtin"]] and (self.tpl_current is None or self.tpl_current["name"] != t["name"]):
+                if not messagebox.askyesno("Voice Typing", f"'{t['name']}' is a built-in template. Replace it with yours? "
+                                           "(Delete yours later to get the original back.)", parent=self.win):
+                    return
+            templates.save(t)
+        except Exception as e:
+            messagebox.showerror("Voice Typing", f"Could not save the template:\n{e}", parent=self.win)
+            return
+        self.refresh_templates(select=t["name"])
+        self.status_var.set(f"Template '{t['name']}' saved")
+
+    def delete_template(self):
+        t = self.tpl_current
+        if t is None or t["builtin"]:
+            return
+        what = "Restore the built-in version and discard your copy?" if t["overrides_builtin"] else f"Delete the template '{t['name']}'?"
+        if not messagebox.askyesno("Voice Typing", what, parent=self.win):
+            return
+        templates.delete(t)
+        self.tpl_current = None
+        self.refresh_templates(select=t["name"])
 
     # ---- Settings pages --------------------------------------------------------------------
     def build_settings(self, section, values):
